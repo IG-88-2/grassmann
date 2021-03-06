@@ -245,9 +245,9 @@ impl Mul <Vector3> for Matrix3 {
 
     fn mul(self, v:Vector3) -> Vector3 {
         vec3![
-            self[0] * v[0] + self[1] * v[1] + self[2] * v[2],
-            self[3] * v[0] + self[4] * v[1] + self[5] * v[2],
-            self[6] * v[0] + self[7] * v[1] + self[8] * v[2]
+            self[0] * v.x + self[1] * v.y + self[2] * v.z,
+            self[3] * v.x + self[4] * v.y + self[5] * v.z,
+            self[6] * v.x + self[7] * v.y + self[8] * v.z
         ]
     }
 }
