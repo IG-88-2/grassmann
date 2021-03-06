@@ -18,8 +18,7 @@ use std::{
     }
 };
 use num_traits::{ Num, identities, cast };
-
-use crate::matrix::Number;
+use crate::Number;
 //TODO move traits in main
 
 #[macro_export]

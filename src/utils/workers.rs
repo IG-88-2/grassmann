@@ -1,3 +1,5 @@
+#![allow(warnings)]
+
 use wasm_bindgen::prelude::Closure;
 use web_sys::{
     Document, 
