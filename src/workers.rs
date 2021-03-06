@@ -1,17 +1,16 @@
 #![allow(warnings)]
-
 use wasm_bindgen::prelude::Closure;
 use web_sys::{
-    Document, 
-    Element, 
-    Event, 
-    HtmlElement, 
-    Navigator, 
-    WebGl2RenderingContext, 
-    WebGlProgram, 
-    WebGlShader, 
-    Window, 
-    Worker, 
+    Document,
+    Element,
+    Event,
+    HtmlElement,
+    Navigator,
+    WebGl2RenderingContext,
+    WebGlProgram,
+    WebGlShader,
+    Window,
+    Worker,
     window
 };
 use web_sys::{
@@ -67,5 +66,4 @@ impl Workers {
 
         self.ws.clear();
     }
-
 }

@@ -1,6 +1,6 @@
 mod core;
-mod utils;
 mod tests;
+mod workers;
 use crate::core::*;
 use num_traits::{Num, NumAssignOps, NumOps, PrimInt, Signed, cast, identities};
 

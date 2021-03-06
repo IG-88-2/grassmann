@@ -1,9 +1,10 @@
 #![allow(dead_code, warnings)]
 use std::{cell::RefCell, mem::size_of, rc::Rc, time::Instant};
-use crate::{core::utils::{init_rand, ml_thread, multiply_blocks, multiply_blocks_threads, division_level, get_optimal_depth}, utils::{strassen::strassen, workers::Workers}};
+use crate::{core::utils::{init_rand, ml_thread, multiply_blocks, multiply_blocks_threads, division_level, get_optimal_depth}};
 use crate::matrix;
-use crate::core::utils::{augment_sq2n_size,decompose_blocks,augment_sq2n,eq_f64,eq,transpose,multiply};
+use crate::core::utils::{augment_sq2n_size,decompose_blocks,augment_sq2n,eq_f64,eq,transpose,multiply,strassen};
 use crate::core::matrix::*;
+use crate::workers::{Workers};
 use js_sys::{Float64Array, SharedArrayBuffer, Uint32Array};
 use wasm_bindgen::{JsCast, prelude::*};
 use rand::prelude::*;
