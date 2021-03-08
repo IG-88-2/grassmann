@@ -5,8 +5,13 @@ use std::{fmt, fmt::{
 use crate::{
     Float
 };
-
-use super::vector3::Vector3;
+use super::{
+    vector::Vector, 
+    vector3::Vector3
+};
+use super::{utils::{clamp, eq_eps_f64}};
+use rand::prelude::*;
+use rand::Rng;
 
 
 
@@ -93,7 +98,7 @@ impl Vector4 {
 
     pub fn normalize(&mut self) {
 
-        let s = self.x + self.y + self.z;
+        let s = self.x + self.y + self.z + self.t;
         
         if s == 0. {
             return;
@@ -109,6 +114,20 @@ impl Vector4 {
         self.y = f(self.y);
         self.z = f(self.z);
         self.t = f(self.t);
+    }
+
+
+
+    pub fn rand(max: Float) -> Vector4 {
+
+        let mut rng = rand::thread_rng();
+
+        let x = rng.gen_range(0., max); 
+        let y = rng.gen_range(0., max);
+        let z = rng.gen_range(0., max);
+        let t = rng.gen_range(0., max);
+
+        vec4![x, y, z, t]
     }
 }
 
@@ -347,7 +366,20 @@ impl From<Vector3> for Vector4 {
             v.x,
             v.y,
             v.z,
-            0.
+            1.
+        )
+    }
+}
+
+
+
+impl From<Vector<Float>> for Vector4 {
+    fn from(v: Vector<Float>) -> Vector4 {
+        Vector4::new(
+            v[0],
+            v[1],
+            v[2],
+            v[3]
         )
     }
 }
@@ -356,15 +388,34 @@ impl From<Vector3> for Vector4 {
 
 mod tests {
     use std::f64::consts::PI;
-
     use super::{
-        Vector4
+        Vector4,
+        eq_eps_f64
     };
-    
-    #[test]
-    fn operations() {
-        
 
+
+
+    #[test]
+    fn length() {
+
+        let x = vec4![1., 1., 1., 1.];
+
+        let l = x.length();
         
+        assert_eq!(2., l, "length should equal 3 {}", l);
+    }
+
+
+
+    #[test]
+    fn normalize() {
+
+        let mut x = vec4![77.,34.,2.5,8.9];
+
+        x.normalize();
+
+        let l = x.length();
+        
+        assert!(eq_eps_f64(l, 1.), "length should equal 1 {}", l);
     }
 }

@@ -2,7 +2,8 @@ mod core;
 mod tests;
 mod workers;
 use crate::core::*;
-use num_traits::{Num, NumAssignOps, NumOps, PrimInt, Signed, cast, identities};
+use num_traits::{Num, NumAssignOps, NumOps, PrimInt, Signed, cast::{FromPrimitive, ToPrimitive}, identities};
+use std::fmt::{Debug}; 
 
 
 
@@ -10,11 +11,11 @@ pub type Float = f64;
 
 
 
-pub trait Integer : PrimInt + Copy + NumAssignOps + std::fmt::Debug {}
+pub trait Integer : PrimInt + Copy + NumAssignOps + Debug {}
 
 
 
-pub trait Number : Num + cast::FromPrimitive + Copy + NumOps + NumAssignOps + std::fmt::Debug + Sized + Signed + PartialOrd + 'static {
+pub trait Number : Num + Copy + ToString + FromPrimitive + ToPrimitive + NumOps + NumAssignOps + Debug + Sized + Signed + PartialOrd + 'static {
     fn to_ne_bytes(self) -> [u8; 8];
 }
 

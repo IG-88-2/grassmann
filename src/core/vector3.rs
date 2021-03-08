@@ -1,10 +1,11 @@
-use std::{fmt, fmt::{
+use std::{f32::EPSILON, fmt, fmt::{
         Display, 
         Formatter
     }, ops::{Add, AddAssign, Div, DivAssign, Index, IndexMut, Mul, MulAssign, Neg, Sub, SubAssign}};
 use crate::Float;
-
-use super::vector4::Vector4;
+use super::{vector::Vector, vector4::Vector4, matrix3::Matrix3, matrix4::Matrix4, utils::{clamp, eq_eps_f64}};
+use rand::prelude::*;
+use rand::Rng;
 
 
 
@@ -100,18 +101,16 @@ impl Vector3 {
 
     pub fn cross(&self, b: &Vector3) -> Vector3 {
 
-        Vector3::new(
-            self.y * b.z - self.z * b.y,
-            self.z + b.x - self.x * b.z, 
-            self.x + b.y - self.y * b.x 
-        )
+        let c = Matrix3::cross(self);
+
+        c * b
     }
 
 
 
     pub fn distance(&self, b: &Vector3) -> Float {
 
-        let v =  Vector3::new(
+        let v = Vector3::new(
             self.x - b.x,
             self.y - b.y, 
             self.z - b.z
@@ -132,7 +131,13 @@ impl Vector3 {
             return 0.
         }
 
+        println!("angle: d is {}, m is {}", d, m);
+
         d /= m;
+
+        d = clamp(-1., 1.)(d);
+
+        println!("angle: d is {}", d);
 
         d.acos()
     }
@@ -143,6 +148,19 @@ impl Vector3 {
         self.x = f(self.x);
         self.y = f(self.y);
         self.z = f(self.z);
+    }
+
+
+
+    pub fn rand(max: Float) -> Vector3 {
+
+        let mut rng = rand::thread_rng();
+
+        let x = rng.gen_range(0., max); 
+        let y = rng.gen_range(0., max);
+        let z = rng.gen_range(0., max);
+
+        vec3![x, y, z]
     }
 }
 
@@ -377,17 +395,146 @@ impl From<Vector4> for Vector3 {
 
 
 
-mod tests {
-    use std::f64::consts::PI;
+impl From<Vector<Float>> for Vector3 {
+    fn from(v: Vector<Float>) -> Vector3 {
+        Vector3::new(
+            v[0],
+            v[1],
+            v[2]
+        )
+    }
+}
 
-    use super::{
-        Vector3
-    };
+
+
+mod tests {
+    use std::{f32::EPSILON, f64::consts::PI};
+    use super::{Vector3, Matrix3, Matrix4, Vector4, eq_eps_f64, clamp};
+
+
     
     #[test]
-    fn operations() {
-        
+    fn length() {
+        let id = Matrix3::id();
+        let basis: [Vector3; 3] = id.into_basis();
 
+        let x = basis[0].length();
+        let y = basis[1].length();
+        let z = basis[2].length();
+
+        assert_eq!(1., x, "x is 1 ({})", x);
+        assert_eq!(1., y, "y is 1 ({})", y);
+        assert_eq!(1., z, "z is 1 ({})", z);
         
+        let x = vec3![1., 2., 2.];
+        let l = x.length();
+        assert_eq!(3., l, "length should equal 3 {}", l);
+        
+        let mut x = Vector3::rand(10.);
+        let l0 = x.length();
+        x *= 2.;
+        let l1 = x.length(); 
+        assert_eq!(l0 * 2., l1, "length should double {} - {}", l0, l1);
+
+        let r = Matrix3::rotation(0.43);
+        let mut x = Vector3::rand(10.);
+        let mut y = Vector3::rand(10.);
+        let mut z = Vector3::rand(10.);
+
+        let lx = x.length();
+        let ly = y.length();
+        let lz = z.length();
+
+        x = &r * x;
+        y = &r * y;
+        z = &r * z;
+
+        let l2x = x.length();
+        let l2y = y.length();
+        let l2z = z.length();
+        
+        assert!(eq_eps_f64(lx, l2x), "length should stay equal {} - {}", lx, l2x);
+        assert!(eq_eps_f64(ly, l2y), "length should stay equal {} - {}", ly, l2y);
+        assert!(eq_eps_f64(lz, l2z), "length should stay equal {} - {}", lz, l2z);
+    }
+
+
+
+    #[test]
+    fn normalize() {
+
+        let mut x = vec3![77.,34.,2.5];
+
+        x.normalize();
+
+        let l = x.length();
+        
+        assert!(eq_eps_f64(l, 1.), "length should equal 1 {}", l);
+    }
+
+
+
+    #[test]
+    fn cross() {
+        
+        let x = Vector3::rand(10.);
+        let y = Vector3::rand(10.);
+        let z = x.cross(&y);
+        
+        let dx = x * z;
+        let dy = y * z;
+
+        assert!(eq_eps_f64(dx, 0.), "dot x should equal 0 {}", dx);
+        assert!(eq_eps_f64(dy, 0.), "dot y should equal 0 {}", dy);
+    }
+
+
+
+    #[test]
+    fn distance() {
+        let x = Vector3::rand(10.);
+        let z = x.distance(&x);
+        assert_eq!(z, 0., "distance to itself should equal 0 {}", z);
+        
+        let offset = Vector3::rand(10.);
+        let l = offset.length();
+        let t = Matrix4::translate(offset.x, offset.y, offset.z, 1.);
+        
+        let d = Vector3::rand(10.);
+        let y = Vector4::from(d);
+        let yp = &t * y;
+        let y = Vector3::from(y);
+        let yp = Vector3::from(yp);
+        
+        let dst = y.distance(&yp);
+        assert!(eq_eps_f64(l, dst), "distance should be equal to length of translation vector dl {} dst {}", l, dst);
+    }
+
+
+
+    #[test]
+    fn angle() {
+        let x = Vector3::rand(10.);
+        let z = x.angle(&x);
+        assert!(eq_eps_f64(z, 0.), "angle with itself should equal 0 {}", z);
+
+        let id = Matrix3::id();
+        let basis: [Vector3; 3] = id.into_basis();
+
+        let x = basis[0];
+        let y = basis[1];
+        
+        let ang = x.angle(&y);
+        
+        assert_eq!(ang, PI / 2., "basis angle {}", ang);
+
+        let d = PI / 2.;
+        let test = Matrix4::rotation(d,d,d);
+
+        let test1 = Matrix4::rotation(d,0.,0.);
+        let test2 = Matrix4::rotation(0.,d,0.);
+        let test3 = Matrix4::rotation(0.,0.,d);
+
+        println!("test \n 0 {} \n \n 1 {} \n \n 2 {} \n \n 3 {} \n", test, test1, test2, test3);
     }
 }

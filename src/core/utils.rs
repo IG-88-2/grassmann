@@ -651,6 +651,29 @@ pub fn strassen<T:Number>(A:Matrix<T>, B:Matrix<T>) -> Matrix<T> {
 
 
 
+pub fn eq_eps_f64(a: f64, b: f64) -> bool {
+    (a - b).abs() < EPSILON as f64
+}
+
+
+
+pub fn clamp(min: f64, max: f64) -> Box<dyn Fn(f64) -> f64> {
+    
+    let f = move |n: f64| {
+        if n < min { 
+            min 
+        } else if n > max { 
+            max 
+        } else { 
+            n 
+        }
+    };
+
+    Box::new(f)
+}
+
+
+
 pub fn eq_f64(a: &Matrix<f64>, b: &Matrix<f64>) -> bool {
     
     if a.rows != b.rows || a.columns != b.columns {

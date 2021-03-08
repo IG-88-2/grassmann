@@ -47,7 +47,7 @@ macro_rules! matrix4 {
 
 
 #[macro_export]
-macro_rules! compose_basis {
+macro_rules! compose_basis4 {
     (
         $x:expr, 
         $y:expr, 
@@ -92,6 +92,8 @@ pub struct Matrix4 {
     pub data: [Float; 16]
 }
 
+
+
 impl Display for Matrix4 {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, 
@@ -103,6 +105,8 @@ impl Display for Matrix4 {
         )
     }
 }
+
+
 
 impl Index<usize> for Matrix4 {
     type Output = Float;
@@ -435,7 +439,7 @@ impl Matrix4 {
         z: Vector4,
         t: Vector4
     ) -> Matrix4 {
-        let r = compose_basis![
+        let r = compose_basis4![
             &x,
             &y,
             &z,
@@ -446,17 +450,35 @@ impl Matrix4 {
     }
 
 
-    //TODO understand required action!
-    //analysis what makes matrix closer to identity ?
-    //derivative of action
-    //projection
-    //let perspective1 = na::Perspective3::new(aspect, FIELD_OF_VIEW, Z_NEAR, Z_FAR);
-    /*
-    const FIELD_OF_VIEW: f32 = 45. * std::f32::consts::PI / 180.;
-    const Z_FAR: f32 = 100.;
-    const Z_NEAR: f32 = 0.1;
-    const Z_PLANE: f32 = -2.414213;
-    */
+
+    pub fn into_basis(&self) -> [Vector4; 4] {
+        let x = vec4![self[0], self[4], self[8],  self[12]];
+        let y = vec4![self[1], self[5], self[9],  self[13]];
+        let z = vec4![self[2], self[6], self[10], self[14]];
+        let t = vec4![self[3], self[7], self[11], self[15]];
+
+        [x,y,z,t]
+    }
+
+
+
+    pub fn orthonormal() {
+        
+    }
+    
+
+
+    pub fn projection() {
+
+    }
+
+
+
+    //what it does to a shape/space
+    //how it diverges from identity
+    //play with each parameter
+    //what is the purpose of the matrix
+    //action per component
     pub fn perspective(fov: f64, aspect: f64, near:f64, far:f64) -> Matrix4 {
         let f = (PI / 2. - fov / 2.).tan();
         let r = 1.0 / (near - far);
@@ -477,23 +499,18 @@ impl Matrix4 {
 
 
 
-    fn orthonormal() {
-        //???
+    pub fn into_gl(&self) -> [f32; 16] {
+        [
+            self[0] as f32, self[1] as f32, self[2] as f32, self[3] as f32,
+            self[4] as f32, self[5] as f32, self[6] as f32, self[7] as f32,
+            self[8] as f32, self[9] as f32, self[10] as f32, self[11] as f32,
+            self[12] as f32, self[13] as f32, self[14] as f32, self[15] as f32
+        ]
     }
-    
 
 
-    fn projection() {
 
-    }
-    
-    /*
-    fn into_gl() -> [f32; 16] {
-        []
-    }
-    */
-
-    fn apply(&mut self, f: fn(f64) -> f64) {
+    pub fn apply(&mut self, f: fn(f64) -> f64) {
         self[0] = f(self[0]);
         self[1] = f(self[1]);
         self[2] = f(self[2]); 
@@ -675,6 +692,8 @@ impl Mul <Float> for Matrix4 {
     }
 }
 
+
+
 impl Mul <Vector4> for &Matrix4 {
     type Output = Vector4;
 
@@ -688,6 +707,8 @@ impl Mul <Vector4> for &Matrix4 {
     }
 }
 
+
+
 impl Mul <Vector4> for Matrix4 {
     type Output = Vector4;
 
@@ -700,6 +721,8 @@ impl Mul <Vector4> for Matrix4 {
         ]
     }
 }
+
+
 
 impl Div <Float> for Matrix4 {
     type Output = Matrix4;
@@ -726,6 +749,7 @@ impl Div <Float> for Matrix4 {
 }
 
 
+
 fn eq(a: &Matrix4, b: &Matrix4) -> bool {
     //f64::EPSILON
     a[0] == b[0] &&
@@ -745,6 +769,7 @@ fn eq(a: &Matrix4, b: &Matrix4) -> bool {
     a[14] == b[14] &&
     a[15] == b[15]
 }
+
 
 
 fn almost_eq(a: &Matrix4, b: &Matrix4) -> bool {
@@ -770,6 +795,8 @@ fn almost_eq(a: &Matrix4, b: &Matrix4) -> bool {
     eq(a[14], b[14]) &&
     eq(a[15], b[15])
 }
+
+
 
 impl PartialEq for Matrix4 {
     fn eq(&self, b: &Matrix4) -> bool {
@@ -811,6 +838,19 @@ impl Neg for Matrix4 {
 
 
 
+impl From<Matrix3> for Matrix4 {
+    fn from(m: Matrix3) -> Matrix4 {
+        matrix4![
+            m[0], m[1], m[2], 0.,
+            m[3], m[4], m[5], 0.,
+            m[6], m[7], m[8], 0.,
+            0.,   0.,   0.,   1.
+        ]
+    }
+}
+
+
+
 mod tests {
     use std::f64::consts::PI;
 
@@ -819,22 +859,16 @@ mod tests {
     };
     
     #[test]
-    fn operations() {
+    fn perspective() {
         
-        let m = matrix4![
-            3., 1., 1., 1.,
-            1., 2., 1., 1.,
-            1., 1., 2., 1.,
-            1., 1., 1., 2.
-        ];
-
-        let inv = m.inv().unwrap();
-
-        let id = Matrix4::id();
-
-        let id2 = &inv * &m;
-
-        assert_eq!(id, id2, "hey {} \n {}", id, id2);
+        const fov: f32 = 45. * std::f32::consts::PI / 180.;
+        const far: f32 = 100.;
+        const near: f32 = 0.1;
+        const aspect: f32 = 1.; //-2.414213;
+       
+        //apply to cube
+        let p = Matrix4::perspective(fov as f64, aspect as f64, near as f64, far as f64);
         
+        //assert_eq!(1.,0., "perspective {}", p);
     }
 }
