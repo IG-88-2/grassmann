@@ -20,7 +20,6 @@ use std::{
 use crate::{Float, matrix3, matrix3::Matrix3, vec4, vector4::Vector4};
 extern crate wasm_bindgen;
 use std::f64::consts::PI;
-
 use wasm_bindgen::prelude::*;
 
 
@@ -362,6 +361,11 @@ impl Matrix4 {
     }
 
 
+    //TODO
+    pub fn gimbal() {
+
+    }
+
 
     pub fn scale(s: f64) -> Matrix4 {
         matrix4![
@@ -461,15 +465,22 @@ impl Matrix4 {
     }
 
 
-
-    pub fn orthonormal() {
-        
-    }
     
+    pub fn orthographic(left: f64, right: f64, top: f64, bottom: f64, near: f64, far: f64) -> Matrix4 {
+        let xx = 2.0 / ( right - left );
+        let yy = 2.0 / ( top - bottom );
+        let zz = -2.0 / ( far - near );
+        
+        let x = ( right + left ) * xx / 2.;
+		let y = ( top + bottom ) * yy / 2.;
+		let z = ( far + near ) * -zz / 2.;
 
-
-    pub fn projection() {
-
+        matrix4![
+            xx, 0., 0., -x,
+            0., yy, 0., -y,
+            0., 0., zz, -z,
+            0., 0., 0.,  1.
+        ]
     }
 
 

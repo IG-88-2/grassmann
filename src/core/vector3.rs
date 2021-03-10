@@ -1,4 +1,4 @@
-use std::{f32::EPSILON, fmt, fmt::{
+use std::{f32::EPSILON, f64::consts::PI, fmt, fmt::{
         Display, 
         Formatter
     }, ops::{Add, AddAssign, Div, DivAssign, Index, IndexMut, Mul, MulAssign, Neg, Sub, SubAssign}};
@@ -131,16 +131,44 @@ impl Vector3 {
             return 0.
         }
 
-        println!("angle: d is {}, m is {}", d, m);
+        //println!("angle: d is {}, m is {}", d, m);
 
         d /= m;
 
         d = clamp(-1., 1.)(d);
 
-        println!("angle: d is {}", d);
+        //println!("angle: d is {}", d);
 
         d.acos()
     }
+
+
+
+    pub fn project_on(&self, b:&Vector3) -> Vector3 {
+
+        let s: Float = (b * self) / (b * b);
+
+        b * s
+    }
+
+
+
+    pub fn retrieve_rotation(&self, origin:f64) -> Matrix4 {
+
+        let [x, y, z] = Matrix3::id().into_basis();
+
+        let mut y_ang = self.angle(&y);
+
+        y_ang -= origin;
+
+        let mut z_ang = self.angle(&z);
+        
+        z_ang -= origin;
+
+        let r = Matrix4::rotation(0., z_ang, y_ang);
+        
+        r
+    } 
 
 
 
@@ -410,7 +438,7 @@ impl From<Vector<Float>> for Vector3 {
 mod tests {
     use std::{f32::EPSILON, f64::consts::PI};
     use super::{Vector3, Matrix3, Matrix4, Vector4, eq_eps_f64, clamp};
-
+    use crate::{vec4, Float};
 
     
     #[test]
@@ -531,10 +559,90 @@ mod tests {
         let d = PI / 2.;
         let test = Matrix4::rotation(d,d,d);
 
-        let test1 = Matrix4::rotation(d,0.,0.);
-        let test2 = Matrix4::rotation(0.,d,0.);
+        let test1 = Matrix4::rotation(d, 0.,0.);
+        let test2 = Matrix4::rotation(0.,d, 0.);
         let test3 = Matrix4::rotation(0.,0.,d);
 
         println!("test \n 0 {} \n \n 1 {} \n \n 2 {} \n \n 3 {} \n", test, test1, test2, test3);
+    }
+
+
+
+    #[test]
+    fn project() {
+        let x = Vector3::rand(10.);
+        let y = Vector3::rand(10.);
+        let yp = x.project_on(&y);
+        let z = y.angle(&yp);
+        let xn: Vector3 = x - yp; 
+        let z2: f64 = xn * y;
+        assert!(eq_eps_f64(z, 0.), "angle should be zero {}", z);
+        assert!(eq_eps_f64(z2, 0.), "dot product should be zero {}", z2);
+    }
+
+
+
+
+    #[test]
+    fn retrieve_rotation() {
+        let id = Matrix3::id();
+        let basis = id.into_basis();
+        let mut x: Vector3 = basis[0].into();
+        let mut xm = -x;
+
+        let c = PI;
+        let r: Matrix3 = Matrix4::rotation(0., 0., c).into();
+        
+        x = &r * x;
+        xm = &r * xm;
+        
+        let a = x.angle(&basis[1].into());
+        let b = xm.angle(&basis[1].into());
+
+        println!("\n x angle with y is {} \n", a);
+        println!("\n xm angle with y is {} \n", b);
+        /*
+        for i in 0..11 {
+            let mut k = 10 - i;
+            if k == 0 {
+                k = 1;
+            }
+            let c = PI / k as f64;
+            
+            let r: Matrix3 = Matrix4::rotation(0., 0., c).into();
+            let r2: Matrix3 = Matrix4::rotation(0., 0., -c).into();
+            
+            let u = r * x;
+            let p = r2 * x;
+
+            let a = u.angle(&basis[1].into());
+            let q = p.angle(&basis[1].into());
+
+            //let b = x.angle(&basis[2].into()); //a / (2. * PI)
+            
+            println!("u angle with y is {} | location {} \n", a / (PI), c);
+            //println!("p angle with y is {}\n", q / (PI));
+
+            //println!("\n angle with z is {} \n", b);
+        }
+        */
+        /*
+        let mut x = vec3![1.,1.,1.]; //Vector3::rand(10.);
+
+        x.normalize();
+
+        let id = vec4![1., 0., 0., 0.];
+
+        let r = x.retrieve_rotation();
+
+        let x = Vector4::from(x);
+
+        let t = &r * id;
+        //let r_inv = r.inv().unwrap();
+
+        //let xi = &r_inv * x;
+
+        assert!(false, "\n x {} \n t {} \n r {}", x, t, r);
+        */
     }
 }

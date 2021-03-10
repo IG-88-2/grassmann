@@ -1,5 +1,6 @@
 #![allow(dead_code, warnings)]
 #![feature(layout_for_ptr)]
+//http://www.hpcavf.uclan.ac.uk/softwaredoc/sgi_scsl_html/sgi_html/ch03.html#ag5Plchri
 use std::{any::TypeId, cell::RefCell, f32::EPSILON, mem::*, rc::Rc};
 use std::{
     collections::HashMap, 
@@ -33,8 +34,15 @@ use num_traits::{Float, Num, NumAssignOps, NumOps, PrimInt, Signed, cast, identi
 use super::utils::{eq, augment_sq2n_size, augment_sq2n, init_rand, random_shape_matrix, add, subtract, multiply};
 use crate::Number;
 
-//??? symbolic operations with matrices ???
 
+
+//gram schmidt process 
+//??? symbolic operations with matrices ???
+//Todo matrix vector - operations in n dims
+//angle between vectors in n dim space 
+//n dim rotation -> how does it changes as dimensions grow ?
+//sphere in n dimensions ?
+//properties in n dim - relation to dimensionality growth
 /*
 ACCURACY!
 i should rearrange rows before elimination (generate P) - how ?
@@ -175,7 +183,7 @@ JMT(J) = -T(M), then M is Hamiltonian
 //partition
 //reshape
 //augment
-//strassen
+//strassen (how to visualize ???)
 
 
 

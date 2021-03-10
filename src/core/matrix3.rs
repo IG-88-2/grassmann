@@ -1,10 +1,7 @@
-use std::{
-    fmt,
-    fmt::{
+use std::{f64::consts::PI, fmt, fmt::{
         Display, 
         Formatter
-    }, 
-    ops::{
+    }, ops::{
         Add, 
         AddAssign, 
         Index, 
@@ -14,11 +11,9 @@ use std::{
         Mul,
         Div,
         Neg
-    }
-};
+    }};
 use crate::{Float, vec3, vector3::Vector3};
-
-use super::matrix4::Matrix4;
+use super::{vector::Vector, vector4::Vector4, matrix4::Matrix4, utils::{clamp, eq_eps_f64}};
 
 
 
@@ -137,30 +132,47 @@ impl Matrix3 {
 
 
     pub fn inv(&self) -> Option<Matrix3> {
-        let s = self.det();
+        let a = self;
+        let s = a.det();
+
+        let a11 = a[0];
+        let a12 = a[1];
+        let a13 = a[2];
+
+        let a21 = a[3];
+        let a22 = a[4];
+        let a23 = a[5];
+
+        let a31 = a[6];
+        let a32 = a[7];
+        let a33 = a[8];
 
         if s==0. {
            return None;
         }
  
-        let mut m = Matrix3::new([
-            self[4] * self[8] - self[5] * self[7], 
-           -1. * (self[3] * self[8] - self[5] * self[6]),  
-            self[3] * self[7] - self[4] * self[6],  
-            
-           -1. * (self[1] * self[8] - self[2] * self[7]),  
-            self[0] * self[8] - self[2] * self[6],  
-           -1. * (self[0] * self[7] - self[1] * self[6]),  
+        let xx = a22 * a33 - a23 * a32;
+        let xy = a12 * a33 - a13 * a32; 
+        let xz = a12 * a23 - a13 * a22;
 
-            self[1] * self[5] - self[2] * self[4],  
-           -1. * (self[0] * self[5] - self[2] * self[3]), 
-            self[0] * self[4] - self[1] * self[3]
-        ]);
+        let yx = a21 * a33 - a23 * a31;
+        let yy = a11 * a33 - a13 * a31;
+        let yz = a11 * a23 - a13 * a21; 
 
-        m = m * (1./s);
+        let zx = a21 * a32 - a22 * a31;
+        let zy = a11 * a32 - a12 * a31;
+        let zz = a11 * a22 - a12 * a21;
 
+        let mut m = matrix3![
+            xx, -yx, zx,
+           -xy,  yy,-zy,
+            xz, -yz, zz
+        ];
+        
         m.t();
 
+        m = m * (1./s);
+        
         Some(m)
     }
 
@@ -242,6 +254,79 @@ impl Matrix3 {
         let z = vec3![self[2], self[5], self[8]];
 
         [x,y,z]
+    }
+
+
+
+    pub fn orthonormal(v:&Vector3) -> Matrix3 {
+        let mut x = *v;
+        
+        let mut y = Vector3::rand(10.);
+        
+        while y * x == 0. {
+            y = Vector3::rand(10.);
+        }
+
+        let p = y.project_on(&x);
+        
+        y -= p;
+
+        let mut z = x.cross(&y);
+
+        x.normalize();
+        y.normalize();
+        z.normalize();
+
+        Matrix3::from_basis(x, y, z)
+    }
+
+
+
+    pub fn projection(A:&Matrix3, b:&Vector3) -> Vector3 {
+
+        //TODO do not use inverse
+        //solve AtA x = At b
+        let mut At = A.clone();
+        
+        println!("\n projection: A {} \n", At);
+
+        At.t();
+        
+        println!("\n projection: At {} \n", At);
+        
+        let aat: Matrix3 = &At * A;
+
+        println!("\n projection: A * &At {} \n", aat);
+
+        println!("\n projection: aat det {} \n", aat.det());
+        
+        let aati = aat.inv().unwrap();
+
+        let id = &aat * &aati;
+
+        let id2 = &aati * &aat;
+
+        println!("\n projection: aati {} \n", aati);
+
+        println!("\n projection: id {} \n", id);
+
+        println!("\n projection: id2 {} \n", id2);
+
+        let x = aati * (At * b);
+
+        println!("\n projection: x {} \n", x);
+
+        let r = A * x;
+
+        println!("\n projection: r {} \n", r);
+
+        r
+    }
+
+
+
+    pub fn solve() {
+        //TODO
     }
 
 
@@ -525,11 +610,154 @@ impl From<Matrix4> for Matrix3 {
 
 mod tests {
     use std::f64::consts::PI;
-
-    use super::{
-        Matrix3, Vector3
-    };
+    use rand::Rng;
+    use crate::core::{matrix4::Matrix4, vector4::Vector4};
+    use super::{Matrix3, Vector3, eq_eps_f64};
     
+
+
+    #[test]
+    fn inv() {
+
+        let a = matrix3![
+            0.00000000046564561, 5., 44363463473474574.,
+            0.00000000046346561, 3., 44574574574573.,
+            0.0000000006461, 1., 7534534534534.
+        ];
+
+        let e = a.inv().unwrap();
+
+        println!("\n e is {} \n", e);
+
+        let id: Matrix3 = a * e;
+
+        println!("\n id is {} \n", id);
+
+        assert!(false);
+    }
+
+
+
+    //#[test]
+    fn projection() {
+        //TODO modify proj
+        //make sure proj orth to cross of in space
+        let max = 50.;
+        let mut rng = rand::thread_rng();
+        let id = Matrix3::id();
+        let b = id.into_basis();
+        let id_x = b[0];
+        let x = Vector3::rand(10.);
+        let y = Vector3::rand(10.);
+        let c1 = rng.gen_range(-max,max);
+        let c2 = rng.gen_range(-max,max);
+        let z = (&x * c1) + (&y * c2);
+
+        let m = Matrix3::from_basis(x,y,z);
+
+        assert!(eq_eps_f64(m.det(), 0.), "matrix should be singular");
+
+        let orth: Matrix3 = Matrix3::orthonormal(&x);
+        let rot: Matrix3 = Matrix4::rotation(PI / 4., 0., 0.).into();
+        let t: Vector3 = &(orth * rot) * y;
+        let tp: Vector3 = Matrix3::projection(&m, &t);
+        let d = tp.distance(&t);
+        
+        assert!(d != 0., "t,tp distance should not be zero");
+
+        println!("\n t is {} | tp is {} \n", t, tp);
+        
+        let e: Vector3 = t - tp;
+        let d: f64 = e * y;
+
+        println!("\n e is {} | y is {} | d is {} \n", e, y, d);
+
+        assert!(eq_eps_f64(d, 0.), "d should be zero {}", d);
+
+        //projection on full space is the same (try id)
+        //e is orthogonal
+        //project cross get zero
+        //apply M
+        //x angle with y id
+        //x angle with z id
+        
+        //rotate y around x
+        //rotate y in id space 
+        //apply rotation which took id x to x 
+        
+        //id x vs x
+        //relative to y,z
+        //original location pi/2 with y,z
+        //current location
+        
+        let dst: Vector3 = x - id_x;
+        //which rotation is going to produce this effect ???
+        let r = Matrix4::rotation(dst.x, dst.y, dst.z);
+
+        //A through rotational composition
+        //B through construction of orthonormal basis
+        //x - id x - decompose into rotations
+        //what rotation i need per dim
+
+        //take x - vector from plane
+        //rotate y around x
+        //rotation
+        // 
+
+        //vector inside subspace - invariant
+        //x angle with z axis
+        //rotate y rotation by this angle
+    }
+    
+
+
+    #[test]
+    fn orthonormal() {
+        /*
+        ORTHONORMAL
+
+        Q * Qt = I
+
+        Q is inverse of Qt verify!
+        
+        */
+        //investigate composition of orthonormal basis with rotation
+        //AB vs BA
+        //does rotation action transferable into space A by applying rotation before/after ? 
+        
+        let v = Vector3::rand(1.);
+        let m = Matrix3::orthonormal(&v);
+        let basis = m.into_basis();
+
+        let xl = basis[0].length();
+        let yl = basis[1].length();
+        let zl = basis[2].length();
+        
+        let a = v.angle(&basis[0]);
+        assert!(eq_eps_f64(a, 0.), "angle with first vector should be zero {}", a);
+
+        assert!(eq_eps_f64(xl, 1.), "xl length should be 1 {}", xl);
+        assert!(eq_eps_f64(yl, 1.), "yl length should be 1 {}", yl);
+        assert!(eq_eps_f64(zl, 1.), "zl length should be 1 {}", zl);
+
+        let a: f64 = &basis[0] * &basis[1];
+        let b: f64 = &basis[0] * &basis[2];
+        assert!(eq_eps_f64(a, 0.), "a should be 0 {}", a);
+        assert!(eq_eps_f64(b, 0.), "b should be 0 {}", b);
+        
+        let c: f64 = &basis[1] * &basis[0];
+        let d: f64 = &basis[1] * &basis[2];
+        assert!(eq_eps_f64(c, 0.), "c should be 0 {}", c);
+        assert!(eq_eps_f64(d, 0.), "d should be 0 {}", d);
+
+        let e: f64 = &basis[2] * &basis[1];
+        let f: f64 = &basis[2] * &basis[0];
+        assert!(eq_eps_f64(e, 0.), "e should be 0 {}", e);
+        assert!(eq_eps_f64(f, 0.), "f should be 0 {}", f);
+    }
+
+
+
     #[test]
     fn operations() {
         
