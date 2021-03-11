@@ -4,23 +4,7 @@ self.onmessage = function(args:any) {
     
     rs.then((m) => {
 
-        //let sab = args.data[0];
-        //let view = new Float64Array(sab);
-        
-        //let view2 = new Uint8Array(sab);
-
-        //view[2] = 4.99;
-
-        //let mem = m.wasm_memory();
-
-        //i can transfer data here
-        //call rust function and receive a) pointer to writable location b) size in bytes of writable location
-
-        //const cells = new Uint8Array(mem.buffer);
-
-        //console.log("module", rs, m, mem);
-
-        console.log("data in worker", args.data);
+        //console.log("data in worker", args.data);
 
         let sab = args.data[0];
 

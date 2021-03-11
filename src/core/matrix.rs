@@ -1,7 +1,7 @@
 #![allow(dead_code, warnings)]
 #![feature(layout_for_ptr)]
 //http://www.hpcavf.uclan.ac.uk/softwaredoc/sgi_scsl_html/sgi_html/ch03.html#ag5Plchri
-use std::{any::TypeId, cell::RefCell, f32::EPSILON, mem::*, rc::Rc};
+use std::{any::TypeId, cell::RefCell, f32::EPSILON, future::Future, mem::*, pin::Pin, rc::Rc, task::{Context, Poll}};
 use std::{
     collections::HashMap, 
     fmt,
@@ -810,8 +810,6 @@ pub fn division_level<T: Number>(A: &Matrix<T>, optimal_block_size: usize, threa
         s = 10000;
     }
 
-    let limit = false;
-
     let total_size = A.size();
 
     let mut blocks = 1;
@@ -824,9 +822,13 @@ pub fn division_level<T: Number>(A: &Matrix<T>, optimal_block_size: usize, threa
 
     } else {
 
-        let c = if x > threads && limit { threads } else { x };
+        let c = if x > threads { threads } else { x };
 
         let n = (c as f64).log(4.).ceil();
+
+        unsafe {
+            log(&format!("\n n is {} \n", n));
+        }
 
         blocks = (4. as f64).powf(n) as usize;
     }
@@ -928,8 +930,8 @@ pub fn mul_blocks<T: Number>(
 
 
 pub fn prepare_multiply_threads(
-    a: &mut Matrix<f64>, 
-    b: &mut Matrix<f64>, 
+    a: &Matrix<f64>, 
+    b: &Matrix<f64>, 
     optimal_block_size: usize,
     threads: usize
 ) -> (
@@ -1146,7 +1148,6 @@ impl <T: Number> From<Matrix4> for Matrix<T> {
 
 
 
-//TODO unpack here
 #[wasm_bindgen]
 pub fn ml_thread(
     sab:&SharedArrayBuffer,
@@ -1207,76 +1208,92 @@ pub fn ml_thread(
 
 
 
-//TODO into async
-//TODO detect memory limit in wasm
-#[wasm_bindgen]
-pub fn test_multiplication(hc: f64) {
+pub struct WorkerOperation {
+    pub _ref: Rc<RefCell<Workers>>,
+    pub extract: Box<FnMut(&mut Workers) -> Option<Matrix<f64>>>
+}
 
-    let optimal_block_size = 4000;
-    let max_side = 156;
-    let max = 20000.;
-    let mut A: Matrix<f64> = Matrix::rand_shape(max_side, max);
-    let mut B: Matrix<f64> = Matrix::rand_shape(max_side, max);
 
-    unsafe {
-        log(&format!("\n [HC {}] test_multiplication: A ({}, {}) | B ({}, {}) \n", hc, A.rows, A.columns, B.rows, B.columns));
-    }
+
+impl Future for WorkerOperation {
+
+    type Output = Matrix<f64>;
     
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let s = self._ref.clone();
+        let mut state = s.borrow_mut();
+        let result: Option<Matrix<f64>> = (self.extract)(&mut*state);
+
+        if result.is_some() {
+            let result = result.unwrap();
+            state.terminate();
+            Poll::Ready(result)
+        } else {
+            let w = cx.waker().clone();
+            state.waker = Some(w);
+            Poll::Pending
+        }
+    }
+}
+
+/*
+TODO 
+workers factory
+workers bounded by hardware concurrency 
+reuse workers
+spread available work through workers, establish queue
+*/
+
+pub fn multiply_threads(
+    hc: usize,
+    optimal_block_size: usize, 
+    A: &Matrix<f64>, 
+    B: &Matrix<f64>
+) -> WorkerOperation {
     let (blocks, mut A, mut B, tasks) = prepare_multiply_threads(
-        &mut A,
-        &mut B,
+        A,
+        B,
         optimal_block_size,
-        hc as usize
+        hc
     );
 
     unsafe {
-        log(&format!("\n test_multiplication: A ({}, {}) | B ({}, {}) | blocks {} | tasks {} \n", A.rows, A.columns, B.rows, B.columns, blocks, tasks.len()));
+        log(&format!("\n multiply_threads: blocks {}, tasks {} \n", blocks, tasks.len()));
     }
 
-    let mut workers = Workers::new("./worker.js", tasks.len());
-    let mut workers = Rc::new( RefCell::new(workers) );
-    
-    let s = transfer_into_sab(&A, &B);
-    let a: Rc<SharedArrayBuffer> = Rc::new(s);
     let ar = A.rows;
     let ac = A.columns;
     let sa = A.mem_size();
     let sb = B.mem_size();
+    let sab_rc: Rc<SharedArrayBuffer> = Rc::new(
+        transfer_into_sab(&A, &B)
+    );
+    let mut workers = Workers::new("./worker.js", tasks.len());
+    let mut workers = Rc::new( RefCell::new(workers) );
     let mut list = workers.borrow_mut();
+    
+    list.work = tasks.len() as u32;
 
-    for i in 0..list.ws.len() {
+    for i in 0..tasks.len() {
+        let task = tasks[i];
         let worker = &mut list.ws[i];
-        let t = tasks[i];
-        let sab = a.clone();
-        let array: js_sys::Array = pack_mul_task(t, &sab, &A, &B);
+        let sab = sab_rc.clone();
+        let array = pack_mul_task(task, &sab, &A, &B);
         let hook = workers.clone();
-        
         let c = Box::new(
             move |event: Event| {
-
+                let sc = Rc::strong_count(&sab);
                 let mut list = hook.borrow_mut();
                 list.ws[i].cb = None;
-                let sc = Rc::strong_count(&sab);
-                let last = sc <= 2;
-
-                if last {
+                list.work -= 1;
+                
+                if list.work == 0 {
                     let mut result = Float64Array::new_with_byte_offset(&sab, (sa + sb) as u32);
-
                     let data = result.to_vec();
-
                     let mut ma = Matrix::new(ar, ac);
-                    
                     ma.from_vec(data);
-                    
-                    unsafe {
-                        log(&format!("\n result {:?} \n", ma.data));
-                    }
-
-                    list.terminate();
-                }
-
-                unsafe {
-                    log(&format!("worker {} completed | strong count {}, {:?}", i, sc, hook));
+                    list.result = Some(ma);
+                    list.waker.take().unwrap().wake();
                 }
             }
         ) as Box<dyn FnMut(Event)>;
@@ -1293,6 +1310,45 @@ pub fn test_multiplication(hc: f64) {
 
         let result = worker.w.post_message(&array);
     }
+
+
+
+    WorkerOperation {
+        _ref: workers.clone(),
+        extract: Box::new(
+            move |s:&mut Workers| -> Option<Matrix<f64>> {
+                let m = s.result.take();
+                m
+            }
+        )
+    }
+}
+
+
+
+//TODO memory limit in wasm ?
+#[wasm_bindgen]
+pub async fn test_multiplication(hc: f64) {
+
+    console_error_panic_hook::set_once();
+
+    let optimal_block_size = 4000;
+    let max_side = 156;
+    let max = 20000.;
+    let mut A: Matrix<f64> = Matrix::rand_shape(max_side, max);
+    let mut B: Matrix<f64> = Matrix::rand_shape(max_side, max);
+    
+    //TODO multiply in usual way assert equivalent
+
+    let r = multiply_threads(hc as usize, optimal_block_size, &A, &B).await;
+    let r2: Matrix<f64> = mul_blocks(&mut A, &mut B, optimal_block_size, true, hc as usize);
+    
+    assert!(r == r2, "they should be equal {} \n \n {}", r, r2);
+
+    unsafe {
+        log(&format!("\n final result is {} \n \n {} \n", r, r2));
+    }
+
 }
 
 

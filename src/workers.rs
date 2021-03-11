@@ -1,4 +1,6 @@
 #![allow(warnings)]
+use std::task::Waker;
+
 use wasm_bindgen::prelude::Closure;
 use web_sys::{
     Document,
@@ -19,6 +21,8 @@ use web_sys::{
     WebSocket
 };
 
+use crate::core::matrix::Matrix;
+
 
 
 #[derive(Debug)]
@@ -31,7 +35,10 @@ pub struct WorkerState {
 
 #[derive(Debug)]
 pub struct Workers {
-    pub ws: Vec<WorkerState>
+    pub ws: Vec<WorkerState>,
+    pub work: u32,
+    pub result: Option<Matrix<f64>>,
+    pub waker: Option<Waker>
 }
 
 
@@ -52,7 +59,10 @@ impl Workers {
         }
         
         Workers {
-            ws
+            ws,
+            work: 0,
+            result: None,
+            waker: None
         }
     }
 

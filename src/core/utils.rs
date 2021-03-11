@@ -47,10 +47,6 @@ pub fn pack_mul_task(t: [usize; 8], sab:&SharedArrayBuffer, A:&Matrix<f64>, B:&M
     let array: js_sys::Array = js_sys::Array::new();
 
     array.push(&sab);
-
-    let a_r = A.rows;
-    let a_c = A.columns;
-
     
     let a_rows = JsValue::from(A.rows as u32);
     let a_columns = JsValue::from(A.columns as u32);
@@ -114,7 +110,7 @@ pub fn is_wasm() -> bool {
 
 
 
-fn measure_time(f: fn()) -> u128 {
+pub fn measure_time(f: fn()) -> u128 {
 
     let before = Instant::now();
 
