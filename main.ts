@@ -4,10 +4,7 @@ rust.then((m) => {
     
     let hc = navigator.hardwareConcurrency;
 
-    //m.test_multiplication(hc);
-    //m.test_decomposition();
-    //m.test_strassen();
-    //m.test_matrix_mul_shader();
+    m.test_multiplication(hc);
     
 })
 .catch((error) => {

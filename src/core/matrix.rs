@@ -34,7 +34,9 @@ use num_traits::{Float, Num, NumAssignOps, NumOps, PrimInt, Signed, cast, identi
 use web_sys::Event;
 use crate::{Number, workers::Workers};
 
-use super::{matrix3::Matrix3, matrix4::Matrix4};
+use super::{matrix3::Matrix3, matrix4::Matrix4, utils::{from_data_square, pack_mul_task, transfer_into_sab}};
+
+
 
 //mul
 //rref
@@ -88,8 +90,7 @@ S = S11 S12
 
 T(S11)S21 and T(S22)S12 are symmetric
 T(S11)S22 = In + T(S21)S12  
-*/
-/*
+
 hamiltonian
 A   G
 F  -T(A)
@@ -160,7 +161,6 @@ JMT(J) = -T(M), then M is Hamiltonian
 //hash table with entries tuples for indices
 //can be compressed
 //is_banded
-//is_symmetric
 //is_square
 //H(A) = -A
 //is_skew_hermitian
@@ -809,7 +809,7 @@ pub fn division_level<T: Number>(A: &Matrix<T>, optimal_block_size: usize, threa
     if (s as i32) == -1 {
         s = 10000;
     }
-    
+
     let limit = false;
 
     let total_size = A.size();
@@ -927,67 +927,7 @@ pub fn mul_blocks<T: Number>(
 
 
 
-#[wasm_bindgen]
-pub fn ml_thread(
-    sab:&SharedArrayBuffer,
-
-    a_rows:usize,
-    a_columns:usize,
-    b_rows:usize,
-    b_columns:usize,
-    
-    ax0:usize,ay0:usize,
-    ax1:usize,ay1:usize,
-    bx0:usize,by0:usize,
-    bx1:usize,by1:usize
-) {
-    let s = size_of::<f64>();
-    let mut sa = a_rows * a_columns * s;
-    let mut sb = b_rows * b_columns * s;
-    
-    let mut ra = Float64Array::new_with_byte_offset(&sab, 0);
-    let mut rb = Float64Array::new_with_byte_offset(&sab, sa as u32);
-    let mut rc = Float64Array::new_with_byte_offset(&sab, (sa + sb) as u32);
-    
-    let mut ca = 0.;
-    let mut cb = 0.;
-    
-    for m in ay0..ay1 {
-        for n in ax0..ax1 {
-            ca += ra.get_index((m * a_columns + n) as u32);
-        }
-    }
-
-    if ca == 0. {
-        return;
-    }
-    
-    for m in by0..by1 {
-        for n in bx0..bx1 {
-            cb += rb.get_index((m * b_columns + n) as u32);
-        }
-    }
-
-    if cb == 0. {
-        return;
-    }
-    
-    for m in ay0..ay1 {
-        for n in bx0..bx1 {
-            for p in ax0..ax1 {
-                let v = rc.get_index((m * b_columns + n) as u32) + 
-                        ra.get_index((m * a_columns + p) as u32) * 
-                        rb.get_index((p * b_columns + n) as u32);
-
-                rc.set_index((m * b_columns + n) as u32, v);
-            }
-        }
-    }
-}
-
-
-
-pub fn multiply_blocks_threads(
+pub fn prepare_multiply_threads(
     a: &mut Matrix<f64>, 
     b: &mut Matrix<f64>, 
     optimal_block_size: usize,
@@ -1017,7 +957,7 @@ pub fn multiply_blocks_threads(
     
     let blocks = division_level(&A, optimal_block_size, threads);
     
-    //println!("A:({},{}), B:({},{}), size {}, computing with {} blocks", A.rows, A.columns, B.rows, B.columns, A.size(), blocks);
+    println!("A:({},{}), B:({},{}), size {}, computing with {} blocks", A.rows, A.columns, B.rows, B.columns, A.size(), blocks);
 
     let block_size = A.size() / blocks;
 
@@ -1182,26 +1122,13 @@ impl <T: Number> Mul for Matrix<T>
 
 
 
-fn from_data <T: Number>(d: &Vec<f64>, size: usize) -> Matrix<T> {
-
-    let data: Vec<T> = d.iter().map(|x| { T::from_f64(*x).unwrap() }).collect();
-
-    let mut m = Matrix::new(size,size);
-
-    m.from_vec(data);
-
-    m
-}
-
-
-
 impl <T: Number> From<Matrix3> for Matrix<T> {
 
     fn from(m: Matrix3) -> Matrix<T> {
 
         let v: Vec<f64> = m.data.into();
 
-        from_data(&v, 3)
+        from_data_square(&v, 3)
     }
 }
 
@@ -1213,195 +1140,79 @@ impl <T: Number> From<Matrix4> for Matrix<T> {
 
         let v: Vec<f64> = m.data.into();
 
-        from_data(&v, 4)
+        from_data_square(&v, 4)
     }
 }
 
 
 
-fn unpack_dims(mem: &SharedArrayBuffer) -> ((usize, usize),(usize, usize)) {
-
-    let mut m = js_sys::Uint32Array::new( mem );
-
-    let a_rows = m.get_index(0) as usize;
-    let a_columns = m.get_index(1) as usize;
-    let b_rows = m.get_index(2) as usize;
-    let b_columns = m.get_index(3) as usize;
-
-    ((a_rows, a_columns), (b_rows, b_columns))
-}
-
-
-
-fn pack_dims(a:&Matrix<f64>, b:&Matrix<f64>) -> js_sys::SharedArrayBuffer {
-
-    let size = size_of::<u32>() as u32;
-
-    let mem = js_sys::SharedArrayBuffer::new(4 * size);
-
-    let mut m = js_sys::Uint32Array::new( &mem );
-
-    m.set_index(0, a.rows as u32);
-    m.set_index(1, a.columns as u32);
-    m.set_index(2, b.rows as u32);
-    m.set_index(3, b.columns as u32);
-
-    mem
-}
-
-
-
-//TODO convert into single sab with offsets - fn decompose
+//TODO unpack here
 #[wasm_bindgen]
-pub fn worker_test(
-    a:&SharedArrayBuffer, 
-    b:&SharedArrayBuffer, 
-    c:&SharedArrayBuffer,
-    dims:&SharedArrayBuffer
+pub fn ml_thread(
+    sab:&SharedArrayBuffer,
+
+    a_rows:usize,
+    a_columns:usize,
+    b_rows:usize,
+    b_columns:usize,
+    
+    ax0:usize,ay0:usize,
+    ax1:usize,ay1:usize,
+    bx0:usize,by0:usize,
+    bx1:usize,by1:usize
 ) {
-    console_error_panic_hook::set_once();
-
-    unsafe {
-        log(&format!("\n worker_test: c {:?} \n", c));
-    }
-
-    let d = unpack_dims(dims);
-    let (a_rows, a_columns) = d.0;
-    let (b_rows, b_columns) = d.1;
+    let s = size_of::<f64>();
+    let mut sa = a_rows * a_columns * s;
+    let mut sb = b_rows * b_columns * s;
     
-    unsafe {
-        log(&format!("\n worker_test: a_rows, a_columns ({},{}) \n", a_rows, a_columns));
-    }
-
-    unsafe {
-        log(&format!("\n worker_test: b_rows, b_columns ({},{}) \n", b_rows, b_columns));
-    }
-
-    let mut A:Matrix<f64> = Matrix::<f64>::from_sab_f64(a_rows, a_columns, a);
-    let mut B:Matrix<f64> = Matrix::<f64>::from_sab_f64(b_rows, b_columns, b);
-    let optimal_block_size = 1000;
-    let discard_zero_blocks = true;
-    let result = mul_blocks(&mut A, &mut B, optimal_block_size, discard_zero_blocks, 1);
-    let mut C = Matrix::new(a_rows, b_columns);
+    let mut ra = Float64Array::new_with_byte_offset(&sab, 0);
+    let mut rb = Float64Array::new_with_byte_offset(&sab, sa as u32);
+    let mut rc = Float64Array::new_with_byte_offset(&sab, (sa + sb) as u32);
     
-    for i in 0..C.rows {
-        for j in 0..C.columns {
-            C[[i,j]] = result[[i,j]];
+    let mut ca = 0.;
+    let mut cb = 0.;
+    
+    for m in ay0..ay1 {
+        for n in ax0..ax1 {
+            ca += ra.get_index((m * a_columns + n) as u32);
         }
     }
 
-    let result = Float64Array::new(c);
+    if ca == 0. {
+        return;
+    }
     
-    for i in 0..C.data.len() {
-        result.set_index(i as u32, C.data[i]);
+    for m in by0..by1 {
+        for n in bx0..bx1 {
+            cb += rb.get_index((m * b_columns + n) as u32);
+        }
     }
 
-    unsafe {
-        log(&format!("\n worker_test: C {:?} \n", C));
+    if cb == 0. {
+        return;
     }
-}
-
-
-
-#[wasm_bindgen]
-pub fn multiply_blocks_worker() {
-
-    let max = 226;
-    let optimal_block_size = 100;
-    let mut rng = rand::thread_rng();
-    let A_rows = rng.gen_range(0, max) + 1; 
-    let A_columns = rng.gen_range(0, max) + 1;
-    let B_rows = A_columns;
-    let B_columns = rng.gen_range(0, max) + 1;
-
-    let mut A: Matrix<f64> = Matrix::new(A_rows, A_columns);
-    let mut B: Matrix<f64> = Matrix::new(B_rows, B_columns);
     
-    let (
-        blocks, //??? should be equal to blocks
-        mut A,
-        mut B,
-        tasks
-    ) = multiply_blocks_threads(
-        &mut A, 
-        &mut B, 
-        optimal_block_size,
-        1
-    );
-    
-    let f = "_multiply_blocks_worker";
-    let hc = tasks.len(); //should be equal to blocks;
-    let workers = Workers::new("./worker.js", hc);
-    let ra = A.into_sab();
-    let rb = B.into_sab();
-    let size = (size_of::<f64>() * A.rows * B.columns) as u32;
-    let rc = SharedArrayBuffer::new(size);
-    
-    for i in 0..workers.ws.len() {
-        let array: js_sys::Array = js_sys::Array::new();
+    for m in ay0..ay1 {
+        for n in bx0..bx1 {
+            for p in ax0..ax1 {
+                let v = rc.get_index((m * b_columns + n) as u32) + 
+                        ra.get_index((m * a_columns + p) as u32) * 
+                        rb.get_index((p * b_columns + n) as u32);
 
-        array.push(&ra);
-        array.push(&rb);
-        array.push(&rc);
-
-        let mut dims = SharedArrayBuffer::new((size_of::<u32>() * 12) as u32);
-        let dims_v = Uint32Array::new(&dims);
-
-        dims_v.set_index(0, A.rows as u32);
-        dims_v.set_index(1, A.columns as u32);
-        dims_v.set_index(2, B.rows as u32);
-        dims_v.set_index(3, B.columns as u32);
-
-        let t = tasks[i];
-
-        dims_v.set_index(4, t[0] as u32);
-        dims_v.set_index(5, t[1] as u32);
-        dims_v.set_index(6, t[2] as u32);
-        dims_v.set_index(7, t[3] as u32);
-
-        dims_v.set_index(8, t[4] as u32);
-        dims_v.set_index(9, t[5] as u32);
-        dims_v.set_index(10, t[6] as u32);
-        dims_v.set_index(11, t[7] as u32);
-
-        array.push(&dims);
-        
-        std::mem::forget(dims);
-        
-        let next = &workers.ws[i];
-
-        let f = move |event: Event| {
-            unsafe {
-                log(&format!("worker {} completed", i));
+                rc.set_index((m * b_columns + n) as u32, v);
             }
-        };
-
-        let c = Box::new(f) as Box<dyn FnMut(Event)>;
-
-        let callback1 = Closure::wrap(c);
-        
-        next.w.set_onmessage(
-            Some(
-                callback1.as_ref().unchecked_ref()
-            )
-        );
-
-        callback1.forget();
-        
-        let result = next.w.post_message(&array);
+        }
     }
-    
-    std::mem::forget(ra);
-    std::mem::forget(rb);
-    std::mem::forget(rc);
 }
 
 
 
+//TODO into async
 //TODO detect memory limit in wasm
 #[wasm_bindgen]
 pub fn test_multiplication(hc: f64) {
 
+    let optimal_block_size = 4000;
     let max_side = 156;
     let max = 20000.;
     let mut A: Matrix<f64> = Matrix::rand_shape(max_side, max);
@@ -1410,17 +1221,10 @@ pub fn test_multiplication(hc: f64) {
     unsafe {
         log(&format!("\n [HC {}] test_multiplication: A ({}, {}) | B ({}, {}) \n", hc, A.rows, A.columns, B.rows, B.columns));
     }
-
-    let optimal_block_size = 4000;
-
-    let (
-        blocks,
-        mut A,
-        mut B,
-        tasks
-    ) = multiply_blocks_threads(
-        &mut A, 
-        &mut B, 
+    
+    let (blocks, mut A, mut B, tasks) = prepare_multiply_threads(
+        &mut A,
+        &mut B,
         optimal_block_size,
         hc as usize
     );
@@ -1429,200 +1233,66 @@ pub fn test_multiplication(hc: f64) {
         log(&format!("\n test_multiplication: A ({}, {}) | B ({}, {}) | blocks {} | tasks {} \n", A.rows, A.columns, B.rows, B.columns, blocks, tasks.len()));
     }
 
-    let example = &A * &B;
-    let example = Rc::new(example);
-   
-
-    let s = size_of::<f64>();
-    let sa = A.size() * s;
-    let sb = B.size() * s;
-    let sc = A.rows * B.columns * s;
-    let size = sa + sb + sc;
-
-    unsafe {
-        log(&format!("\n ready to allocated {} bytes in sab \n", size));
-    }
-    let mut s = SharedArrayBuffer::new(size as u32);
-    let mut v1 = Float64Array::new_with_byte_offset(&s, 0);
-    let mut v2 = Float64Array::new_with_byte_offset(&s, sa as u32);
-    
-    Matrix::<f64>::copy_to_f64(&A, &mut v1);
-    Matrix::<f64>::copy_to_f64(&B, &mut v2);
-    
-    unsafe {
-        log(&format!("\n allocated {} bytes in sab \n", size));
-    }
-
-    let a: Rc<SharedArrayBuffer> = Rc::new(s);
-    
     let mut workers = Workers::new("./worker.js", tasks.len());
-
-    let mut workers = Rc::new(
-        RefCell::new(workers)
-    );
+    let mut workers = Rc::new( RefCell::new(workers) );
     
+    let s = transfer_into_sab(&A, &B);
+    let a: Rc<SharedArrayBuffer> = Rc::new(s);
+    let ar = A.rows;
+    let ac = A.columns;
+    let sa = A.mem_size();
+    let sb = B.mem_size();
     let mut list = workers.borrow_mut();
 
     for i in 0..list.ws.len() {
-
-        let mut c_example = example.clone();
-
+        let worker = &mut list.ws[i];
         let t = tasks[i];
-        let next = &mut list.ws[i];
-        let ta = a.clone();
-        let array: js_sys::Array = js_sys::Array::new();
-
-        array.push(&a);
-
-        let a_r = A.rows;
-        let a_c = A.columns;
-
-        
-        let a_rows = JsValue::from(A.rows as u32);
-        let a_columns = JsValue::from(A.columns as u32);
-
-        let b_rows = JsValue::from(B.rows as u32);
-        let b_columns = JsValue::from(B.columns as u32);
-
-        let t0 = JsValue::from(t[0] as u32);
-        let t1 = JsValue::from(t[1] as u32);
-        let t2 = JsValue::from(t[2] as u32); 
-        let t3 = JsValue::from(t[3] as u32); 
-
-        let t4 = JsValue::from(t[4] as u32); 
-        let t5 = JsValue::from(t[5] as u32); 
-        let t6 = JsValue::from(t[6] as u32); 
-        let t7 = JsValue::from(t[7] as u32); 
-
-        array.push(&a_rows);
-        array.push(&a_columns);
-
-        array.push(&b_rows);
-        array.push(&b_columns);
-
-        array.push(&t0);
-        array.push(&t1);
-        array.push(&t2);
-        array.push(&t3);
-
-        array.push(&t4);
-        array.push(&t5);
-        array.push(&t6);
-        array.push(&t7);
-
+        let sab = a.clone();
+        let array: js_sys::Array = pack_mul_task(t, &sab, &A, &B);
         let hook = workers.clone();
-
-        let f = move |event: Event| {
-            
-            let mut list = hook.borrow_mut();
-
-            list.ws[i].cb = None;
-
-            let sc = Rc::strong_count(&ta);
-            
-            if sc <= 2 {
-                //means we are done
-                let mut result = Float64Array::new_with_byte_offset(&ta, (sa + sb) as u32);
-
-                let ggg = result.to_vec();
-
-                let mut ma = Matrix::new(a_r, a_c);
-                
-                ma.from_vec(ggg);
-                
-                unsafe {
-                    log(&format!("\n expected {:?} \n", &c_example.data));
-                }
-
-                unsafe {
-                    log(&format!("\n result {:?} \n", ma.data));
-                }
-
-                let mt = Rc::get_mut(&mut c_example).unwrap();
-
-                let equal = ma == *mt;
-
-                assert!(equal, "matrices should be equal");
-
-                list.terminate();
-            }
-
-            unsafe {
-                log(&format!("worker {} completed | strong count {}, {:?}", i, sc, hook));
-            }
-        };
-
-        let c = Box::new(f) as Box<dyn FnMut(Event)>;
-
-        let callback1 = Closure::wrap(c);
         
-        let kk = callback1.as_ref();
+        let c = Box::new(
+            move |event: Event| {
 
-        let vv = Some(
-            kk.dyn_ref().unwrap() //unchecked_ref()
+                let mut list = hook.borrow_mut();
+                list.ws[i].cb = None;
+                let sc = Rc::strong_count(&sab);
+                let last = sc <= 2;
+
+                if last {
+                    let mut result = Float64Array::new_with_byte_offset(&sab, (sa + sb) as u32);
+
+                    let data = result.to_vec();
+
+                    let mut ma = Matrix::new(ar, ac);
+                    
+                    ma.from_vec(data);
+                    
+                    unsafe {
+                        log(&format!("\n result {:?} \n", ma.data));
+                    }
+
+                    list.terminate();
+                }
+
+                unsafe {
+                    log(&format!("worker {} completed | strong count {}, {:?}", i, sc, hook));
+                }
+            }
+        ) as Box<dyn FnMut(Event)>;
+        
+        let callback = Closure::wrap(c);
+        
+        worker.w.set_onmessage(
+            Some(
+                callback.as_ref().dyn_ref().unwrap()
+            )
         );
-
-        next.w.set_onmessage(vv);
         
-        next.cb = Some(callback1);
+        worker.cb = Some(callback);
 
-        let result = next.w.post_message(&array);
+        let result = worker.w.post_message(&array);
     }
-}
-
-
-
-#[wasm_bindgen]
-pub fn test_multiplication_worker(
-    sab: &SharedArrayBuffer,
-    a_rows: f64,
-    a_columns: f64,
-    b_rows: f64,
-    b_columns: f64,
-    t0: f64,
-    t1: f64,
-    t2: f64,
-    t3: f64,
-    t4: f64,
-    t5: f64,
-    t6: f64,
-    t7: f64
-) {
-    unsafe {
-        log(&format!("\n hello from worker {} {} {} {} | {} {} {} {} | {} {} {} {} \n", 
-            a_rows,
-            a_columns,
-            b_rows,
-            b_columns,
-
-            t0,
-            t1,
-            t2,
-            t3,
-            t4,
-            t5,
-            t6,
-            t7
-        ));
-    }
-
-    ml_thread(
-        sab,
-
-        a_rows as usize,
-        a_columns as usize,
-        b_rows as usize,
-        b_columns as usize,
-        
-        t0 as usize,
-        t1 as usize,
-        t2 as usize,
-        t3 as usize,
-        t4 as usize,
-        t5 as usize,
-        t6 as usize,
-        t7 as usize
-    );
 }
 
 

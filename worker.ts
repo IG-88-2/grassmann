@@ -40,7 +40,7 @@ self.onmessage = function(args:any) {
         let t6 = args.data[11];
         let t7 = args.data[12];
         
-        m.test_multiplication_worker(
+        m.ml_thread(
             sab, 
             
             a_rows,
