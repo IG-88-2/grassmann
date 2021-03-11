@@ -1,5 +1,4 @@
 mod core;
-mod tests;
 mod workers;
 use crate::core::*;
 use num_traits::{Num, NumAssignOps, NumOps, PrimInt, Signed, cast::{FromPrimitive, ToPrimitive}, identities};
