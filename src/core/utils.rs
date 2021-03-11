@@ -85,6 +85,38 @@ pub fn pack_mul_task(t: [usize; 8], sab:&SharedArrayBuffer, A:&Matrix<f64>, B:&M
 
 
 
+pub fn division_level<T: Number>(A: &Matrix<T>, optimal_block_size: usize, threads: usize) -> usize {
+    
+    let mut s = optimal_block_size;
+
+    if (s as i32) == -1 {
+        s = 10000;
+    }
+
+    let total_size = A.size();
+
+    let mut blocks = 1;
+
+    let x = total_size / optimal_block_size;
+
+    if x < 1 {
+
+        blocks = 1;
+
+    } else {
+
+        let c = if x > threads { threads } else { x };
+
+        let n = (c as f64).log(4.).ceil();
+
+        blocks = (4. as f64).powf(n) as usize;
+    }
+
+    blocks
+}
+
+
+
 pub fn from_data_square <T: Number>(d: &Vec<f64>, size: usize) -> Matrix<T> {
 
     let data: Vec<T> = d.iter().map(|x| { T::from_f64(*x).unwrap() }).collect();

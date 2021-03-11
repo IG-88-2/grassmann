@@ -5,3 +5,4 @@ pub mod matrix3;
 pub mod matrix4;
 pub mod matrix;
 pub mod utils;
+pub mod multiply;
