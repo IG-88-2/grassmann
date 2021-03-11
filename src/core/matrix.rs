@@ -217,6 +217,11 @@ macro_rules! matrix {
                 rows += 1;
             )*
             rows -= 1;
+            
+            if rows == 0 {
+                rows = 1;
+            }
+
             c /= rows;
             let mut m : Matrix<$t> = Matrix::new(rows, c);
             m.from_vec(v);
@@ -632,6 +637,31 @@ impl <T: Number> Matrix<T> {
         size_of::<T>() * self.rows * self.columns
 
     }
+
+
+
+    pub fn is_symmetric(&self) -> bool {
+
+        if self.rows != self.columns || self.rows <= 1 {
+           return false; 
+        }
+
+        for i in 0..(self.rows - 1) {
+
+            let start = i + 1;
+
+            for j in start..self.columns {
+                
+                if self[[i,j]] != self[[j,i]] {
+
+                    return false;
+
+                }
+            }
+        }
+
+        true
+    }
 }
 
 
@@ -780,10 +810,6 @@ pub fn division_level<T: Number>(A: &Matrix<T>, optimal_block_size: usize, threa
         s = 10000;
     }
     
-    unsafe {
-        log(&format!("\n threads {} \n", threads));
-    }
-
     let limit = false;
 
     let total_size = A.size();
@@ -1602,12 +1628,13 @@ pub fn test_multiplication_worker(
 
 
 mod tests {
-    use std::{f32::EPSILON as EP, f64::EPSILON, f64::consts::PI};
     use rand::Rng;
-    use crate::{ core::matrix::{Matrix}, matrix};
+    use std::{ f32::EPSILON as EP, f64::EPSILON, f64::consts::PI };
+    use crate::{ core::matrix::{ Matrix }, matrix };
     use super::{ get_optimal_depth, eq_f64, multiply, mul_blocks };
     
-    //TODO
+    
+
     #[test]
     fn transpose() {
         
@@ -1629,23 +1656,60 @@ mod tests {
         let t2 = c.transpose();
         let r = multiply(&t,&t2);
         
-        /*
-        let m = matrix4![
-            3., 1., 1., 1.,
-            1., 2., 1., 1.,
-            1., 1., 2., 1.,
-            1., 1., 1., 2.
-        ];
-    
-        let mut m2 = m.clone();
-    
-        m2.t();
-    
-        let r = mul(&m,&m2, 4, 4, 4);
-        */
-    
-        assert_eq!(1, 1, "hey {}", r);
+        assert_eq!(r.is_symmetric(), true, "product of transposed matrices should be symmetric {}", r);
+
+        //TODO transpose orthonormal basis, inverse
         
+    }
+
+
+
+    #[test]
+    fn is_symmetric() {
+        
+        let m1 = matrix![f64,
+            3., 1., 1., 1.;
+            1., 2., 1., 1.;
+            1., 1., 2., 1.;
+            1., 1., 1., 2.;
+        ];
+
+        assert!(m1.is_symmetric(), "m1 is symmetric");
+
+        let m2 = matrix![f64,
+            4., 7.;
+            7., 2.;
+        ];
+
+        assert!(m2.is_symmetric(), "m2 is symmetric");
+
+        let m3 = matrix![f64,
+            4., 4.;
+            7., 2.;
+        ];
+
+        assert_eq!(m3.is_symmetric(), false, "m3 is not symmetric");
+        
+        let m4 = matrix![f64,
+            3., 1., 1., 1.;
+            1., 2., 1., 1.;
+            1., 1., 2., 1.;
+            1., 1., 1., 2.;
+            1., 1., 1., 2.;
+        ];
+        
+        assert_eq!(m4.is_symmetric(), false, "m4 is not symmetric");
+
+        let m5 = matrix![f64,
+            3., 1., 1., 3.33, 1., 10.1;
+            1., 2., 1., 1., 1., 1.;
+            1., 1., 5., 12., 1., 1.;
+            3.33, 1., 12., 2., 1., 1.;
+            1., 1., 1., 1., 4., 1.;
+            10.1, 1., 1., 1., 1., 8.;
+        ];
+        
+        assert_eq!(m5.is_symmetric(), true, "m5 is symmetric");
     }
 
 
@@ -1661,8 +1725,8 @@ mod tests {
             let max = 20000.;
             let optimal_block_size = 5000;
             let mut A: Matrix<f64> = Matrix::rand_shape(max_side, max);
-            let mut B: Matrix<f64> = Matrix::rand_shape(max_side, max);
-            
+            let mut B: Matrix<f64> = Matrix::rand(A.columns, A.rows, max); //_shape(max_side, max);
+        
             let C1: Matrix<f64> = &A * &B;
             let C: Matrix<f64> = mul_blocks(&mut A, &mut B, optimal_block_size, discard_zero_blocks, threads);
     
@@ -1673,7 +1737,6 @@ mod tests {
                     assert_eq!(C1[[i,j]], C1[[i,j]], "all entries should be equal");
                 }
             }
-    
         } 
     }   
     

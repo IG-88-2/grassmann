@@ -16,6 +16,12 @@ pub fn eq_eps_f64(a: f64, b: f64) -> bool {
 
 
 
+pub fn is_wasm() -> bool {
+    cfg!(target_arch = "wasm32") && cfg!(target_os = "unknown")
+}
+
+
+
 fn measure_time(f: fn()) -> u128 {
 
     let before = Instant::now();

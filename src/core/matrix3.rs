@@ -658,6 +658,8 @@ mod tests {
         let orth: Matrix3 = Matrix3::orthonormal(&x);
         let rot: Matrix3 = Matrix4::rotation(PI / 4., 0., 0.).into();
         let t: Vector3 = &(orth * rot) * y;
+        
+        //TODO AtA can be singular, when ?
         let tp: Vector3 = Matrix3::projection(&m, &t);
         let d = tp.distance(&t);
         
