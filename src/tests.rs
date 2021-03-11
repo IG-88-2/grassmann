@@ -1,8 +1,6 @@
 #![allow(dead_code, warnings)]
 use std::{cell::RefCell, mem::size_of, rc::Rc, time::Instant};
-use crate::{core::utils::{init_rand, ml_thread, multiply_blocks, multiply_blocks_threads, division_level, get_optimal_depth}};
 use crate::matrix;
-use crate::core::utils::{augment_sq2n_size,decompose_blocks,augment_sq2n,eq_f64,eq,transpose,multiply,strassen};
 use crate::core::matrix::*;
 use crate::workers::{Workers};
 use js_sys::{Float64Array, SharedArrayBuffer, Uint32Array};
@@ -17,100 +15,6 @@ use web_sys::Event;
 extern "C" {
     #[wasm_bindgen(js_namespace = console)]
     fn log(s: &str);
-}
-
-
-
-pub fn get_test_matrices() -> (Matrix<f64>,Matrix<f64>) {
-    let max = 50;
-    let mut rng = rand::thread_rng();
-    let A_rows = rng.gen_range(0, max) + 1; 
-    let A_columns = rng.gen_range(0, max) + 1;
-    let B_rows = A_columns;
-    let B_columns = rng.gen_range(0, max) + 1;
-
-    let mut A: Matrix<f64> = Matrix::new(A_rows, A_columns);
-    let mut B: Matrix<f64> = Matrix::new(B_rows, B_columns);
-
-    init_rand(&mut A);
-    init_rand(&mut B);
-
-    (A,B)
-}
-
-
-
-#[wasm_bindgen]
-pub fn test_decomposition() {
-
-    let t: Matrix<i32> = matrix![i32,
-        3,3,1,2;
-        3,3,1,2;
-        4,4,5,2;
-        4,4,5,2;
-    ];
-
-    let (A11, A12, A21, A22) = decompose_blocks(t);
-    
-    unsafe {
-        log(&format!("\n result \n {:?}, \n {:?}, \n {:?}, \n {:?}, \n", A11, A12, A21, A22));
-    }
-}
-
-
-
-#[wasm_bindgen]
-pub fn test_strassen() {
-
-    console_error_panic_hook::set_once();
-
-    let (mut a, mut b) = get_test_matrices();
-
-    /*
-    let a: Matrix<f64> = matrix![f64,
-        3.,3.,1.,2.;
-        3.,3.,1.,2.;
-        4.,4.,5.,2.;
-        4.,4.,5.,2.;
-    ];
-
-    let b: Matrix<f64> = matrix![f64,
-        3.,3.,1.,2.;
-        3.,3.,1.,2.;
-        4.,4.,5.,2.;
-        4.,4.,5.,2.;
-    ];
-    */
-    
-    let s1 = augment_sq2n_size(&a);
-
-    let s2 = augment_sq2n_size(&b);
-
-    let s = std::cmp::max(s1,s2);
-
-    let mut A: Matrix<f64> = Matrix::new(s,s); 
-
-    A = &A + &a;
-
-    let mut B: Matrix<f64> = Matrix::new(s,s); 
-
-    B = &B + &b;
-
-    let expected: Matrix<f64> = &A * &B;
-
-    unsafe {
-        log(&format!("\n [{}] expected \n {:?} \n", expected.sum(), expected));
-    }
-
-    let C = strassen(A, B);
-
-    unsafe {
-        log(&format!("\n [{}] result \n {:?} \n", C.sum(), C));
-    }
-
-    let equal = eq_f64(&expected, &C);
-
-    assert!(equal, "should be equal");
 }
 
 
@@ -488,7 +392,7 @@ pub fn test_multiplication(hc: f64) {
 
                 let mt = Rc::get_mut(&mut c_example).unwrap();
 
-                let equal = eq(&ma, mt);
+                let equal = ma == *mt;
 
                 assert!(equal, "matrices should be equal");
 
@@ -520,77 +424,11 @@ pub fn test_multiplication(hc: f64) {
 
 
 
-fn matrix_operations() {
-        
-    let t: Matrix<i32> = matrix![i32,
-        1,2,1,2;
-        4,5,1,2;
-        4,5,1,2;
-        4,5,1,2;
-        4,5,1,2;
-        4,5,4,5;
-        1,2,1,2;
-        4,5,1,2;
-        4,5,1,2;
-        4,5,1,2;
-        4,5,1,2;
-        4,5,4,5;
-    ];
-    let c = t.clone();
-    let t2 = transpose(&c);
-    let r = multiply(&t,&t2);
-    
-    /*
-    let m = matrix4![
-        3., 1., 1., 1.,
-        1., 2., 1., 1.,
-        1., 1., 2., 1.,
-        1., 1., 1., 2.
-    ];
-
-    let mut m2 = m.clone();
-
-    m2.t();
-
-    let r = mul(&m,&m2, 4, 4, 4);
-    */
-
-    assert_eq!(1, 1, "hey {}", r);
-
-}
 
 
 
-//TODO all tests should belong to particular file, they should not be piled up 
-fn augment_sq2n_test() {
-    let iterations = 200;
-    let max = 683;
 
-    for i in 0..iterations {
-        let rows = 12; //rng.gen_range(0..max); 
-        let columns = 12; //rng.gen_range(0..max);
-        let m: Matrix<f64> = Matrix::new(rows, columns);
-        let aug = augment_sq2n(m);
 
-        let d = get_optimal_depth(&aug, 10);
-
-        let size = (aug.rows * aug.columns) as f64;
-
-        println!("({},{}) | size - {} | level - {}", aug.rows, aug.columns, size, d);
-
-        let l: f64 = size.log2();
-        //assert_eq!(aug.rows, aug.columns, "from ({} {}) to ({} {}) - should be square", rows, columns, aug.rows, aug.columns);
-        //assert_eq!(l.fract(), 0., "from ({} {}) to ({} {}) - should be power of 2", rows, columns, aug.rows, aug.columns);
-        
-
-        //println!("next {} - ({},{}) - size - {}", i, aug.rows, aug.columns, mem_size);
-        //let q = quadrify(&aug);
-
-        //println!("next {} - ({},{}) - size quad - {}", i, aug.rows, aug.columns, mem_size2);
-
-        //assert_eq!(1, 1, "({} {}) - quad - size - {}", aug.rows, aug.columns, mem_size2);
-    }
-}
 
 
 
@@ -600,18 +438,15 @@ fn test_quad(max: usize) {
     let A_columns = 12; //rng.gen_range(0..max) + 1;
     let B_rows = 12; //A_columns;
     let B_columns = 12; //rng.gen_range(0..max) + 1;
-
-    let mut A: Matrix<f64> = Matrix::new(A_rows, A_columns);
-    let mut B: Matrix<f64> = Matrix::new(B_rows, B_columns);
-
-    init_rand(&mut A);
-    init_rand(&mut B);
+    let max = 10.;
+    let mut A: Matrix<f64> = Matrix::rand(A_rows, A_columns, max);
+    let mut B: Matrix<f64> = Matrix::rand(B_rows, B_columns, max);
 
     let C1 = &A * &B; 
     let C1_sum = C1.sum();
 
-    let s1 = augment_sq2n_size(&A);
-    let s2 = augment_sq2n_size(&B);
+    let s1 = Matrix::augment_sq2n_size(&A);
+    let s2 = Matrix::augment_sq2n_size(&B);
     let s = std::cmp::max(s1,s2);
     let A: Matrix<f64> = Matrix::new(s,s) + A;
     let B: Matrix<f64> = Matrix::new(s,s) + B;
@@ -719,13 +554,11 @@ fn multiply_blocks_test(discard_zero_blocks:bool) {
         let B_rows = max; //A_columns;
         let B_columns = max; //rng.gen_range(0..max) + 1;
         let threads = 1;
-        let mut A: Matrix<f64> = Matrix::new(A_rows, A_columns);
-        let mut B: Matrix<f64> = Matrix::new(B_rows, B_columns);
+        let max = 10.;
+        let mut A: Matrix<f64> = Matrix::rand(A_rows, A_columns, max);
+        let mut B: Matrix<f64> = Matrix::rand(B_rows, B_columns, max);
 
         //println!("next ({}, {})", A.rows, A.columns);
-
-        init_rand(&mut A);
-        init_rand(&mut B);
 
         let C1: Matrix<f64> = &A * &B;
         let C: Matrix<f64> = multiply_blocks(&mut A, &mut B, optimal_block_size, discard_zero_blocks, threads);
@@ -741,16 +574,3 @@ fn multiply_blocks_test(discard_zero_blocks:bool) {
     } 
 }   
 
-
-
-fn multiply_test(){
-
-    let before = Instant::now();
-    multiply_blocks_test(false);
-    println!("\n \n No discarding... Elapsed time: {:.2?} \n \n", before.elapsed().as_millis());
-
-    let before = Instant::now();
-    multiply_blocks_test(true);
-    println!("\n \n Discarding... Elapsed time: {:.2?} \n \n", before.elapsed().as_millis());
-
-}
