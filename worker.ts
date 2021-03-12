@@ -43,7 +43,11 @@ self.onmessage = function(args:any) {
             t7
         );
         
-        postMessage("done");
+        setTimeout(() => {
+            console.log('worker completed task', t0, t1, t2, t3, t4, t5, t6, t7);
+            postMessage("done");
+        }, 2000)
+        
 
     });
 }

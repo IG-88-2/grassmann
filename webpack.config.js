@@ -21,8 +21,9 @@ const appConfig = {
     ]
   },
   devServer: {
+    disableHostCheck: true,
     port: 3000,
-    hot: true,
+    //hot: true,
     historyApiFallback: true
   },
   resolve: {

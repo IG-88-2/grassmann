@@ -27,35 +27,34 @@ extern crate wasm_bindgen;
 extern crate num_cpus;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
-use js_sys::{Float64Array, SharedArrayBuffer, Uint32Array};
+use js_sys::{Float32Array, Float64Array, SharedArrayBuffer, Uint32Array};
 use rand::prelude::*;
 use rand::Rng;
 use num_traits::{Float, Num, NumAssignOps, NumOps, PrimInt, Signed, cast, identities};
 use web_sys::Event;
 use crate::{Number, workers::Workers};
+use super::{matrix3::Matrix3, matrix4::Matrix4, multiply::{ multiply_threads, mul_blocks }, utils::{division_level, from_data_square, pack_mul_task, transfer_into_sab}};
 
-use super::{matrix3::Matrix3, matrix4::Matrix4, multiply::{ multiply_threads }, utils::{division_level, from_data_square, pack_mul_task, transfer_into_sab}};
-
-
+/*
+TODO 
+workers factory
+workers bounded by hardware concurrency 
+reuse workers
+spread available work through workers, establish queue
+*/
 
 //mul
+//mul matrix vector
 //rref
-//nm
+//lu
 //solve
-
-//gram schmidt process 
-//??? symbolic operations with matrices ???
-//Todo matrix vector - operations in n dims
-//angle between vectors in n dim space 
-//n dim rotation -> how does it changes as dimensions grow ?
-//sphere in n dimensions ?
-//properties in n dim - relation to dimensionality growth
+//det
+//eig
+//compose
+//qr
+//cholesky
+//svd
 /*
-ACCURACY!
-i should rearrange rows before elimination (generate P) - how ?
-how P will help to improve accuracy ? some type of numbers go to the bottom...
-
-use higher precision f32 -> f64 -> f128
 use Newton method
 b known
 solve -> Ax = b
@@ -66,14 +65,22 @@ Au = d - solve for u
 next x = x - u (shifting x towards better accuracy)
 */
 
-//NORMAL GROUP INVARIANT UNDER CONJUGATION
+
+
+//jacobian
+//conv
+//house
+//givens
+//pooling (pick number per block defined by stride length)
+//pickens
+//fft
+//rank
 //stochastic
 //markov
 //controllability matrix
 //diag
 //identity
 //perspective
-//rand
 //rotation
 //reflection
 //zeros
@@ -82,55 +89,24 @@ next x = x - u (shifting x towards better accuracy)
 //downshift_permutation
 //ones
 //toeplitz
-/*
-symplectic
-T(S)JS = J
-S = S11 S12
-    S21 S22
-
-T(S11)S21 and T(S22)S12 are symmetric
-T(S11)S22 = In + T(S21)S12  
-
-hamiltonian
-A   G
-F  -T(A)
-
-A,F,G e R(nxn)
-F,G - symmetric
-
-J = 0   In
-   -In  0
-    
-JMT(J) = -T(M), then M is Hamiltonian
-*/
-//jacobi
+//symplectic
+//hamiltonian
 //krylov
 //markov
 //hamming
 //graph
 //dyad
-//conv
 //translation
-//least squares ???
+//least squares
 //projection
-//pick number per block defined by stride length (pooling)
-//pickens
-//house
-//givens
-//fft
-
-//fundamental subspaces, fundamental theorem, proofs
-
 //min
 //max
 //avg
-//rank
 //trace
 //add
 //subtract
 //mul float
 //mul matrix
-//compose
 //transpose
 //apply
 //pow
@@ -139,14 +115,9 @@ JMT(J) = -T(M), then M is Hamiltonian
 //solve
 //distance between two subspaces
 //dist
-//det
-//eig
 //lui
 //ref
 //rref
-//qr
-//cholesky
-//svd
 
 //is_positive_definite
 //is_invertible
@@ -158,15 +129,10 @@ JMT(J) = -T(M), then M is Hamiltonian
 //is triangular ??? cut half! especially for Ax (where it matters for solution)
 //is_lower_triangular
 //is_diagonal
-//hash table with entries tuples for indices
-//can be compressed
 //is_banded
 //is_square
-//H(A) = -A
 //is_skew_hermitian
-//H(A) = A
 //is_hermitian
-//T(A) = -A
 //is_skew_symmetric
 //is_tridiagonal
 //is_upper_bidiagonal
@@ -174,20 +140,13 @@ JMT(J) = -T(M), then M is Hamiltonian
 //is_permutation
 //is_upper_hessenberg
 //is_lower_hessenberg
-//is_conformably_partitioned
 
-//partition
-//block[] -> enter (u,u) leave (u,u) NO INTERSECTIONS ASSERT
-//assert partitioned conformably - dimensions match
-//TODO parallelism, strassen
-//TODO shader computation (tensor flow)
-//FROM vector -> matrix, matrix -> vector
-//INTO  matrix4 -> matrixN etc
-
-//block
-//partition
-//reshape
-//augment
+//hash table with entries tuples for indices
+//assemble matrix from row vectors
+//assemble matrix from column vectors
+//matrix columns into vectors
+//matrix rows into vectors
+//multiply in threads A * col i - cols of B / N threads - k col per threads - assemble
 
 
 
@@ -318,6 +277,18 @@ impl <T: Number> Matrix<T> {
 
 
     pub fn copy_to_f64(m: &Matrix<f64>, dst: &mut Float64Array) {
+
+        for i in 0..m.rows {
+            for j in 0..m.columns {
+                let idx = i * m.columns + j;
+                dst.set_index(idx as u32, m[[i,j]]);
+            }
+        }
+    }
+
+
+
+    pub fn copy_to_f32(m: &Matrix<f32>, dst: &mut Float32Array) {
 
         for i in 0..m.rows {
             for j in 0..m.columns {
@@ -546,7 +517,7 @@ impl <T: Number> Matrix<T> {
     pub fn rand_shape(max_side: usize, max:f64) -> Matrix<T> {
         
         let mut rng = rand::thread_rng();
-
+        
         let rows = rng.gen_range(0, max_side) + 1; 
 
         let columns = rng.gen_range(0, max_side) + 1;
@@ -564,7 +535,7 @@ impl <T: Number> Matrix<T> {
 
         for i in 0..columns {
             for j in 0..rows {
-                let value: f64 = rng.gen();
+                let value: f64 = rng.gen_range(-max, max);
                 A[[j,i]] = T::from_f64(value).unwrap();
             }
         }
@@ -666,13 +637,15 @@ impl <T: Number> Matrix<T> {
 
 
 
-fn add <T: Number>(A: &Matrix<T>, B: &Matrix<T>) -> Matrix<T> {
+fn add <T: Number>(A: &Matrix<T>, B: &Matrix<T>, dim_a:bool) -> Matrix<T> {
     
     assert!(A.rows >= B.rows, "rows do not match");
 
     assert!(A.columns >= B.columns, "columns do not match");
 
-    let mut C: Matrix<T> = Matrix::new(A.rows, A.columns);
+    let rows = if dim_a { A.rows } else { B.rows };
+    let columns = if dim_a { A.columns } else { B.columns };
+    let mut C: Matrix<T> = Matrix::new(rows, columns);
     
     for i in 0..B.rows {
         for j in 0..B.columns {
@@ -804,97 +777,6 @@ pub fn get_optimal_depth<T: Number> (A: &Matrix<T>, optimal_element_size: usize)
 
 
 
-pub fn mul_blocks<T: Number>(
-    a: &mut Matrix<T>, 
-    b: &mut Matrix<T>, 
-    optimal_block_size: usize,
-    discard_zero_blocks: bool,
-    threads: usize
-) -> Matrix<T> {
-
-    let s1 = Matrix::augment_sq2n_size(&a);
-
-    let s2 = Matrix::augment_sq2n_size(&b);
-
-    let s = std::cmp::max(s1,s2);
-
-    let mut A: Matrix<T> = Matrix::new(s,s); 
-
-    A = &A + a;
-
-    let mut B: Matrix<T> = Matrix::new(s,s); 
-
-    B = &B + b;
-    
-    let blocks = division_level(&A, optimal_block_size, threads);
-    
-    //println!("A:({},{}), B:({},{}), size {}, computing with {} blocks", A.rows, A.columns, B.rows, B.columns, A.size(), blocks);
-
-    let block_size = A.size() / blocks;
-
-    let y = (block_size as f64).sqrt() as usize;
-
-    let mut acc: Matrix<T> = Matrix::new(A.rows, B.columns);
-
-    for i in (0..A.rows).step_by(y) {
-        for j in (0..B.columns).step_by(y) {
-
-            let mut v:Vec<Vec<f64>> = Vec::new();
-
-            for k in (0..A.columns).step_by(y) {
-                let ax0 = k;
-                let ax1 = (k + y);
-                let ay0 = i;
-                let ay1 = (i + y);
-                
-                let bx0 = j;
-                let bx1 = (j + y);
-                let by0 = k;
-                let by1 = (k + y);
-                
-                //this is it
-
-                if discard_zero_blocks {
-                    let mut sa = T::zero();
-                    let mut sb = T::zero();
-
-                    for m in ay0..ay1 {
-                        for n in ax0..ax1 {
-                            sa += A[[m,n]];
-                        }
-                    }
-
-                    if sa == T::zero() {
-                        continue;
-                    }
-                    
-                    for m in by0..by1 {
-                        for n in bx0..bx1 {
-                            sb += B[[m,n]];
-                        }
-                    }
-
-                    if sb == T::zero() {
-                        continue;
-                    }
-                }
-                
-                for m in ay0..ay1 {
-                    for n in bx0..bx1 {
-                        for p in ax0..ax1 {
-                            acc[[m,n]] += A[[m,p]] * B[[p,n]];    
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    acc
-}
-
-
-
 pub fn multiply <T:Number>(A: &Matrix<T>, B: &Matrix<T>) -> Matrix<T> {
 
     assert_eq!(A.columns, B.rows, "matrices dimensions should be compatible A columns {} B rows {}", A.columns, B.rows);
@@ -906,7 +788,7 @@ pub fn multiply <T:Number>(A: &Matrix<T>, B: &Matrix<T>) -> Matrix<T> {
 
 impl <T:Number> PartialEq for Matrix<T> {
     fn eq(&self, b: &Matrix<T>) -> bool {
-        eq_f64(self, b)
+        eq(self, b) //eq_f64(self, b)
     }
 }
 
@@ -959,7 +841,7 @@ impl <T: Number> Add for &Matrix<T> {
     type Output = Matrix<T>;
 
     fn add(self, b:&Matrix<T>) -> Matrix<T> {
-        add(&self, b)
+        add(&self, b, true)
     }
 }
 
@@ -969,7 +851,7 @@ impl <T: Number> Add for Matrix<T> {
     type Output = Matrix<T>;
 
     fn add(self, b:Matrix<T>) -> Matrix<T> {
-        add(&self, &b)
+        add(&self, &b, true)
     }
 }
 
@@ -1043,54 +925,77 @@ impl <T: Number> From<Matrix4> for Matrix<T> {
 
 
 
-//TODO memory limit in wasm ?
 #[wasm_bindgen]
 pub async fn test_multiplication(hc: f64) {
 
     console_error_panic_hook::set_once();
 
-    let optimal_block_size = 3000;
-    let max_side = 1356;
-    let max = 20000.;
-    let mut A: Matrix<f64> = Matrix::rand_shape(max_side, max);
-    let mut B: Matrix<f64> = Matrix::rand_shape(max_side, max);
-    
-    let window = web_sys::window().expect("should have a window in this context");
+    let window = web_sys::window().unwrap();
+    let performance = window.performance().unwrap();
+    let c = 100;
+    let max = (2. as f64).powf(3.);
 
-    let performance = window.performance().expect("performance should be available");
-        
-        
-    let start = performance.now(); //performance.timing().request_start();
+    //TODO try to compare with exactly the same algorithm in single thread
 
-    //
     //TODO print difference when not equal
     //TODO establish concrete limits when it is reasonable to spawn threads ?
     //TODO am i discarding zero blocks here ??? check
-    let r: Matrix<f64> = multiply_threads(hc as usize, optimal_block_size, &A, &B).await;
-    
-    let end = performance.now(); //performance.timing().response_end();
+    for i in 10..c {
+        let optimal_block_size = 30 * i;
+        let max_side = 4 * i;
+        let mut A: Matrix<f32> = Matrix::rand_shape(max_side, max);
+        //let mut B: Matrix<f64> = Matrix::rand_shape(max_side, max);
+        let mut B: Matrix<f32> = Matrix::rand(A.columns, A.rows, max);
+        
+        unsafe {
+            log(&format!("\n multiplying A({}, {}) B({},{}) \n", A.rows, A.columns, B.rows, B.columns));
+        }
 
-    unsafe {
-        log(&format!("\n with threads {} \n", end - start));
-    }
+        let start = performance.now();
+        //TODO profile, when this is advantageous ?
+        let r: Matrix<f32> = multiply_threads(hc as usize, optimal_block_size, &A, &B).await;
+        //mul_blocks(&mut A, &mut B, optimal_block_size, false, hc as usize); 
+        
+        let end = performance.now();
+        
+        unsafe {
+            log(&format!("\n by blocks {} \n", end - start));
+        }
 
+        let start = performance.now();
+        let r2: Matrix<f32> = &A * &B;
+        let end = performance.now();
 
-    
-    let start = performance.now(); //performance.timing().request_start();
+        unsafe {
+            log(&format!("\n naive {} \n", end - start));
+        }
 
-    let r2: Matrix<f64> = mul_blocks(&mut A, &mut B, optimal_block_size, true, hc as usize);
-    
-    let end = performance.now(); //performance.timing().response_end();
+        let mut r3 = Matrix::new(A.rows, B.columns);
+        Matrix::init_const(&mut r3, 0.);
+        let r: Matrix<f32> = add(&r, &r3, false);
+        
 
-    unsafe {
-        log(&format!("\n without threads {} \n", end - start));
-    }
+        
+        if !(r == r2) {
+            let diff: Matrix<f32> = &r - &r2;
+            let s = diff.sum(); 
+            unsafe {
+                log(&format!("\n not equal, sum {} \n | r ({},{}) | r2 ({},{}) | {} \n", s, r.rows, r.columns, r2.rows, r2.columns, diff));
 
+                //log(&format!("\n in threads {} \n in local {} \n", r, r2));
+            }
+            break;
+        }
 
-    
-    assert!(r == r2, "they should be equal {} \n \n {}", r, r2);
-    unsafe {
-        //log(&format!("\n final result is {} \n \n {} \n", r, r2));
+        unsafe {
+            //log(&format!("\n without threads {} \n", end - start));
+        }
+        
+        //assert!(r == r2, "they should be equal {} \n \n {}", r, r2);
+
+        unsafe {
+            //log(&format!("\n final result is {} \n \n {} \n", r, r2));
+        }
     }
 }
 

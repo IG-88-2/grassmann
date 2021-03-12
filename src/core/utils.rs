@@ -2,10 +2,10 @@
 use std::{f32::EPSILON, mem::size_of, ops::Index, time::Instant};
 use crate::Number;
 use super::matrix::Matrix;
-use js_sys::{Float64Array, SharedArrayBuffer};
+use js_sys::{Float32Array, SharedArrayBuffer, Uint8Array};
 use num_traits::identities;
-use rand::prelude::*;
-use rand::Rng;
+//use rand::prelude::*;
+//use rand::Rng;
 use wasm_bindgen::{JsCast, prelude::*};
 
 
@@ -18,21 +18,26 @@ extern "C" {
 
 
 
-pub fn transfer_into_sab(A:&Matrix<f64>, B:&Matrix<f64>) -> SharedArrayBuffer {
+pub fn transfer_into_sab(A:&Matrix<f32>, B:&Matrix<f32>) -> SharedArrayBuffer {
     let sa = A.mem_size();
     let sb = B.mem_size();
-    let sc = A.rows * B.columns * size_of::<f64>();
+    let sc = A.rows * B.columns * size_of::<f32>();
     let size = sa + sb + sc;
 
     unsafe {
         log(&format!("\n ready to allocated {} bytes in sab \n", size));
     }
+
     let mut s = SharedArrayBuffer::new(size as u32);
-    let mut v1 = Float64Array::new_with_byte_offset(&s, 0);
-    let mut v2 = Float64Array::new_with_byte_offset(&s, sa as u32);
     
-    Matrix::<f64>::copy_to_f64(&A, &mut v1);
-    Matrix::<f64>::copy_to_f64(&B, &mut v2);
+    let v = Float32Array::new(&s);
+    v.fill(0., 0, v.length());
+
+    let mut v1 = Float32Array::new_with_byte_offset(&s, 0);
+    let mut v2 = Float32Array::new_with_byte_offset(&s, sa as u32); //should it be + 1 ?
+
+    Matrix::<f32>::copy_to_f32(&A, &mut v1);
+    Matrix::<f32>::copy_to_f32(&B, &mut v2);
 
     unsafe {
         log(&format!("\n allocated {} bytes in sab \n", size));
@@ -43,7 +48,7 @@ pub fn transfer_into_sab(A:&Matrix<f64>, B:&Matrix<f64>) -> SharedArrayBuffer {
 
 
 
-pub fn pack_mul_task(t: [usize; 8], sab:&SharedArrayBuffer, A:&Matrix<f64>, B:&Matrix<f64>) -> js_sys::Array {
+pub fn pack_mul_task(t: [usize; 8], sab:&SharedArrayBuffer, A:&Matrix<f32>, B:&Matrix<f32>) -> js_sys::Array {
     let array: js_sys::Array = js_sys::Array::new();
 
     array.push(&sab);
