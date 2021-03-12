@@ -37,7 +37,7 @@ pub struct WorkerState {
 pub struct Workers {
     pub ws: Vec<WorkerState>,
     pub work: i32,
-    pub result: Option<Matrix<f32>>,
+    pub result: Option<Matrix<f64>>,
     pub waker: Option<Waker>
 }
 

@@ -22,22 +22,220 @@ use std::{
 };
 extern crate wasm_bindgen;
 extern crate num_cpus;
+use num::ToPrimitive;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
-use js_sys::{Atomics, Float32Array, SharedArrayBuffer, Uint32Array, Uint8Array};
+use js_sys::{Atomics, Float32Array, Float64Array, SharedArrayBuffer, Uint32Array, Uint8Array};
 use rand::prelude::*;
 use rand::Rng;
 use num_traits::{Float, Num, NumAssignOps, NumOps, PrimInt, Signed, cast, identities};
 use web_sys::Event;
 use crate::{Number, workers::Workers};
-use super::{matrix::Matrix, matrix3::Matrix3, matrix4::Matrix4, utils::{division_level, pack_mul_task, transfer_into_sab}};
+use super::{matrix::Matrix, matrix3::Matrix3, matrix4::Matrix4};
 
-
+//what i can conclude from matrices shapes that is going to help select correct mult method to boost perf ?
 
 #[wasm_bindgen]
 extern "C" {
     #[wasm_bindgen(js_namespace = console)]
     fn log(s: &str);
+}
+
+
+
+pub fn pack_mul_task(t: [usize; 8], sab:&SharedArrayBuffer, A:&Matrix<f64>, B:&Matrix<f64>) -> js_sys::Array {
+    let array: js_sys::Array = js_sys::Array::new();
+
+    array.push(&sab);
+    
+    let a_rows = JsValue::from(A.rows as u32);
+    let a_columns = JsValue::from(A.columns as u32);
+
+    let b_rows = JsValue::from(B.rows as u32);
+    let b_columns = JsValue::from(B.columns as u32);
+
+    let t0 = JsValue::from(t[0] as u32);
+    let t1 = JsValue::from(t[1] as u32);
+    let t2 = JsValue::from(t[2] as u32); 
+    let t3 = JsValue::from(t[3] as u32); 
+
+    let t4 = JsValue::from(t[4] as u32); 
+    let t5 = JsValue::from(t[5] as u32); 
+    let t6 = JsValue::from(t[6] as u32); 
+    let t7 = JsValue::from(t[7] as u32); 
+
+    array.push(&a_rows);
+    array.push(&a_columns);
+
+    array.push(&b_rows);
+    array.push(&b_columns);
+
+    array.push(&t0);
+    array.push(&t1);
+    array.push(&t2);
+    array.push(&t3);
+
+    array.push(&t4);
+    array.push(&t5);
+    array.push(&t6);
+    array.push(&t7);
+
+    array
+}
+
+
+
+pub fn division_level<T: Number>(A: &Matrix<T>, optimal_block_size: usize, threads: usize) -> usize {
+    
+    let mut s = optimal_block_size;
+
+    if (s as i32) == -1 {
+        s = 10000;
+    }
+
+    let total_size = A.size();
+
+    let mut blocks = 1;
+
+    let x = total_size / optimal_block_size;
+
+    if x < 1 {
+
+        blocks = 1;
+
+    } else {
+
+        let c = if x > threads { threads } else { x };
+
+        let n = (c as f64).log(4.).ceil();
+
+        blocks = (4. as f64).powf(n) as usize;
+    }
+
+    blocks
+}
+
+
+
+pub fn decompose_blocks<T: Number>(A: &Matrix<T>) -> (Matrix<T>, Matrix<T>, Matrix<T>, Matrix<T>) {
+    
+    assert_eq!(A.rows, A.columns, "matrix should be square");
+    assert_eq!((A.rows as f32).log2().fract(), 0., "matrix should be pow 2");
+
+    let r = A.rows / 2;
+    let c = A.columns / 2;
+    
+    let mut A11 = Matrix::new(r, c);
+    let mut A12 = Matrix::new(r, c);
+    let mut A21 = Matrix::new(r, c);
+    let mut A22 = Matrix::new(r, c);
+    
+    for i in 0..r {
+        for j in 0..c {
+            A11[[i, j]] = A[[i, j]];
+            A12[[i, j]] = A[[i, c + j]];
+            A21[[i, j]] = A[[r + i, j]];
+            A22[[i, j]] = A[[r + i, c + j]];
+        }
+    }
+
+
+    (A11, A12, A21, A22)
+}
+
+
+
+pub fn recombine_blocks<T: Number>(A11: Matrix<T>, A12: Matrix<T>, A21: Matrix<T>, A22: Matrix<T>) -> Matrix<T> {
+
+    assert_eq!(A11.rows, A11.columns, "A11 matrix should be square");
+    assert_eq!((A11.rows as f32).log2().fract(), 0., "A11 matrix should be pow 2");
+    
+    assert_eq!(A11.rows, A12.rows, "A11 should have rows equivalent to A12");
+    assert_eq!(A11.columns, A12.columns, "A11 should have columns equivalent to A12");
+    
+    assert_eq!(A11.rows, A21.rows, "A11 should have rows equivalent to A21");
+    assert_eq!(A11.columns, A21.columns, "A11 should have columns equivalent to A21");
+
+    assert_eq!(A11.rows, A22.rows, "A11 should have rows equivalent to A22");
+    assert_eq!(A11.columns, A22.columns, "A11 should have columns equivalent to A22");
+
+    let rows = A11.rows;
+    let columns = A11.columns;
+    let r = rows * 2;
+    let c = columns * 2;
+
+    let mut A = Matrix::new(r, c);
+
+    for i in 0..rows {
+        for j in 0..columns {
+            A[[i,j]] = A11[[i,j]];
+            A[[i,j + columns]] = A12[[i,j]];
+            A[[i + rows,j]] = A21[[i,j]];
+            A[[i + rows,j + columns]] = A22[[i,j]];
+        }
+    } 
+
+    A
+}
+
+
+
+pub fn get_optimal_depth<T: Number> (A: &Matrix<T>, optimal_element_size: usize) -> usize {
+
+    assert_eq!(A.rows, A.columns, "A should be square matrix");
+
+    let p = (optimal_element_size as f64).log(4.).ceil();
+
+    let optimal_element_size = (4. as f64).powf(p) as usize;
+
+    let size = A.rows * A.columns;
+
+    if size < 64 {
+        return 0;
+    }
+    
+    let chunks = size / optimal_element_size;
+
+    if chunks < 2 {
+        return 4;
+    }
+    
+    (chunks as f64).log(4.).ceil() as usize
+}
+
+
+
+pub fn strassen<T: Number>(A:&Matrix<T>, B:&Matrix<T>) -> Matrix<T> {
+    
+    let (
+        A11, 
+        A12, 
+        A21, 
+        A22
+    ) = decompose_blocks(A);
+
+    let (
+        B11, 
+        B12, 
+        B21, 
+        B22
+    ) = decompose_blocks(B);
+    
+    let P1: Matrix<T> = &(&A11 + &A22) * &(&B11 + &B22); //TODO implement with consumption
+    let P2: Matrix<T> = &(&A21 + &A22) * &B11;
+    let P3: Matrix<T> = &A11 * &(&B12 - &B22);
+    let P4: Matrix<T> = &A22 * &(&B21 - &B11);
+    let P5: Matrix<T> = &(&A11 + &A12) * &B22;
+    let P6: Matrix<T> = &(&A21 - &A11) * &(&B11 + &B12);
+    let P7: Matrix<T> = &(&A12 - &A22) * &(&B21 + &B22);
+
+    let C11: Matrix<T> = &(&(&P1 + &P4) - &P5) + &P7;
+    let C12: Matrix<T> = &P3 + &P5;
+    let C21: Matrix<T> = &P2 + &P4;
+    let C22: Matrix<T> = &(&(&P1 + &P3) - &P2) + &P6;
+    let C = recombine_blocks(C11, C12, C21, C22);
+    
+    C
 }
 
 
@@ -132,14 +330,14 @@ pub fn mul_blocks<T: Number>(
 
 
 pub fn prepare_multiply_threads(
-    a: &Matrix<f32>, 
-    b: &Matrix<f32>, 
+    a: &Matrix<f64>, 
+    b: &Matrix<f64>, 
     optimal_block_size: usize,
     threads: usize
 ) -> (
     usize,
-    Matrix<f32>,
-    Matrix<f32>,
+    Matrix<f64>,
+    Matrix<f64>,
     Vec<[usize; 8]>
 ) {
     
@@ -151,11 +349,11 @@ pub fn prepare_multiply_threads(
 
     let s = std::cmp::max(s1,s2);
 
-    let mut A: Matrix<f32> = Matrix::new(s,s); 
+    let mut A: Matrix<f64> = Matrix::new(s,s); 
 
     A = &A + a;
 
-    let mut B: Matrix<f32> = Matrix::new(s,s); 
+    let mut B: Matrix<f64> = Matrix::new(s,s); 
 
     B = &B + b;
     
@@ -215,19 +413,19 @@ pub fn prepare_multiply_threads(
 
 pub struct WorkerOperation {
     pub _ref: Rc<RefCell<Workers>>,
-    pub extract: Box<dyn FnMut(&mut Workers) -> Option<Matrix<f32>>>
+    pub extract: Box<dyn FnMut(&mut Workers) -> Option<Matrix<f64>>>
 }
 
 
 
 impl Future for WorkerOperation {
 
-    type Output = Matrix<f32>;
+    type Output = Matrix<f64>;
     
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let s = self._ref.clone();
         let mut state = s.borrow_mut();
-        let result: Option<Matrix<f32>> = (self.extract)(&mut*state);
+        let result: Option<Matrix<f64>> = (self.extract)(&mut*state);
 
         if result.is_some() {
             let result = result.unwrap();
@@ -246,8 +444,8 @@ impl Future for WorkerOperation {
 pub fn multiply_threads(
     hc: usize,
     optimal_block_size: usize, 
-    A: &Matrix<f32>, 
-    B: &Matrix<f32>
+    A: &Matrix<f64>, 
+    B: &Matrix<f64>
 ) -> WorkerOperation {
     let (blocks, mut A, mut B, tasks) = prepare_multiply_threads(
         A,
@@ -266,7 +464,7 @@ pub fn multiply_threads(
     let sa = A.mem_size();
     let sb = B.mem_size();
     let sab_rc: Rc<SharedArrayBuffer> = Rc::new(
-        transfer_into_sab(&A, &B)
+        Matrix::<f64>::transfer_into_sab(&A, &B)
     );
     let workers = Workers::new("./worker.js", tasks.len());
     let workers = Rc::new( RefCell::new(workers) );
@@ -287,10 +485,10 @@ pub fn multiply_threads(
                 list.work -= 1;
                 
                 if list.work == 0 {
-                    let result = Float32Array::new_with_byte_offset(&sab, (sa + sb) as u32); //is offset correct ?
+                    let result = Float64Array::new_with_byte_offset(&sab, (sa + sb) as u32); //is offset correct ?
                     let data = result.to_vec(); //can this affect accuracy ?
                     let mut ma = Matrix::new(ar, bc);
-                    ma.from_vec(data);
+                    ma.set_vec(data);
                     list.result = Some(ma);
                     list.waker.take().unwrap().wake();
                 }
@@ -315,7 +513,7 @@ pub fn multiply_threads(
     WorkerOperation {
         _ref: workers.clone(),
         extract: Box::new(
-            move |s:&mut Workers| -> Option<Matrix<f32>> {
+            move |s:&mut Workers| -> Option<Matrix<f64>> {
                 let m = s.result.take();
                 m
             }
@@ -346,7 +544,7 @@ pub fn ml_thread(
     let ra = Float32Array::new_with_byte_offset(&sab, 0);
     let rb = Float32Array::new_with_byte_offset(&sab, sa as u32);
     let rc = Float32Array::new_with_byte_offset(&sab, (sa + sb) as u32);
-    let rc2 = Uint8Array::new_with_byte_offset(&sab, (sa + sb) as u32);
+    let rc2 = Uint32Array::new_with_byte_offset(&sab, (sa + sb) as u32);
     
     //are tasks overlapping ? how to detect ?
 
@@ -400,19 +598,53 @@ pub fn ml_thread(
 
                     rc.set_index((m * b_columns + n) as u32, v);
                     */
+
                     let v: f32 = ra.get_index((m * a_columns + p) as u32) * rb.get_index((p * b_columns + n) as u32);
 
-                    let old = rc.get_index((m * b_columns + n) as u32); //here is the issue
-                    
-                    if old != 0. {
-                        unsafe {
-                            log(&format!("\n old {} \n", old));
-                        }
-    
-                    }
-                    
-                    rc.set_index((m * b_columns + n) as u32, old + v);
+                    //let old = Atomics::load(&rc2, (m * b_columns + n) as u32).unwrap(); 
+                    //let old = std::mem::transmute::<i32, f32>(old);
+                    //let x = v + old;
+                    //let x = std::mem::transmute::<f32, i32>(v);
+                    let b = v.to_be_bytes(); //.to_i32().unwrap();
+                    let kk = i32::from_be_bytes(b);
+                    let r = Atomics::add(&rc2, (m * b_columns + n) as u32, kk);
 
+                    /*
+                    fn transmute<T, U>(e: T) -> U
+                    std::mem::transmute::<&'b mut R<'static>, &'b mut R<'c>>(r)
+                    */
+
+                    //let u = v.to_bits();
+                    //let y = f32::from_bits(old);
+                    //let kk = y + v;
+                    //let kkk = kk.to_bits();
+                    
+                    /*
+                    ar buffer = new ArrayBuffer(4);
+                    var intView = new Int32Array(buffer);
+                    var floatView = new Float32Array(buffer);
+
+                    floatView[0] = Math.PI
+                    console.log(intView[0].toString(2)); //bits of the 32 bit float
+                    */
+                    //Atomics::store(&rc2, (m * b_columns + n) as u32, kkk as i32);
+                    //rc.get_index((m * b_columns + n) as u32); //here is the issue
+                    //let r = Atomics::add(&rc2, (m * b_columns + n) as u32, u as i32);
+
+                    //r.unwrap();
+                 
+                    
+                    /*
+                    if old != 0 {
+                        unsafe {
+                            //log(&format!("\n old {} \n", old));
+                        }
+                    }
+                    */
+                    
+                    //rc.set_index((m * b_columns + n) as u32, y + v);
+
+                    //Atomics::store(&rc2, (m * b_columns + n) as u32, kkk as i32);
                     //Atomics::load(&rc2);
                     //add
                     //load
