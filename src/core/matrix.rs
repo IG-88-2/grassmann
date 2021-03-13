@@ -1,7 +1,7 @@
 #![allow(dead_code, warnings)]
 #![feature(layout_for_ptr)]
 //http://www.hpcavf.uclan.ac.uk/softwaredoc/sgi_scsl_html/sgi_html/ch03.html#ag5Plchri
-use std::{any::TypeId, cell::RefCell, f32::EPSILON, future::Future, mem::*, pin::Pin, rc::Rc, task::{Context, Poll}, time::Instant};
+use std::{any::TypeId, cell::RefCell, cmp::min, f32::EPSILON, future::Future, mem::*, pin::Pin, rc::Rc, task::{Context, Poll}, time::Instant};
 use std::{
     collections::HashMap, 
     fmt,
@@ -225,105 +225,144 @@ impl <T: Number> Matrix<T> {
     
 
 
-    fn exchange_rows() {
-
+    fn exchange_rows(&mut self, i: usize, j: usize) {
+        for k in 0..self.columns {
+            let t = self[[i, k]];
+            self[[i, k]] = self[[j, k]];
+            self[[j, k]] = t;
+        }
     }
 
 
 
-    fn exchange_columns() {
-
+    fn exchange_columns(&mut self, i: usize, j: usize) {
+        for k in 0..self.rows {
+            let t = self[[k, i]];
+            self[[k, i]] = self[[k, j]];
+            self[[k, j]] = t;
+        }
     }
 
 
 
-    fn equilibrate(&mut self) -> Vec<T> {
-        let one = T::from_f64(1.).unwrap();
-        let zero = T::from_f64(0.).unwrap();
-        let threshold = one;
-        let mut multipliers: Vec<T> = vec![one; self.rows];
-        
-        for i in 0..self.rows {
-            let mut m = zero; 
-            for j in 0..self.columns {
-                let c = self[[i,j]].abs();
-                if c > m {
-                    m = self[[i,j]];
-                }
-            }
-            if m != zero {
-                multipliers[i] = one / m;
+    fn extract_leading_principal_submatrix(&self, n: usize) -> Matrix<T> {
+        let mut A = Matrix::id(n);
+
+        for i in 0..n {
+            for j in 0..n {
+                A[[i,j]] = self[[i,j]];
             }
         }
 
-        multipliers
+        A
     }
 
 
 
     fn lu (A: &Matrix<T>) -> (Matrix<T>, Matrix<T>) {
-        //TODO perform matrix type pre-checks (optional equilibration + partial pivoting)
-        //TODO keep track of number of rows interchanges
+        
+        
+        //TODO keep track of number of rows interchanges (det sign)
+        //TODO is singular ? (kth stage - sum remaining column entries - remainder is 0 - singularity)
+        //TODO det product of U diag
+        //TODO rows > columns
+        //TODO columns > rows
+        //TODO EA, need E inv
+        //TODO PA, need P inv (keep track of permutations)
 
-        //kth stage - sum remaining column entries - remainder is 0 - singularity
-        //partial pivoting kth stage select as pivot largest abs value in column 
-        
-        
-        let zero = T::from_f64(0.).unwrap();
+        //TODO perform matrix type pre-checks (symmetric, positive definite, etc) (optional equilibration + partial pivoting)
+        let eq = false;
+        let mut singular = false;
 
-        let size = A.rows * A.columns;
-        
-        let mut L: Matrix<T> = Matrix::id(A.rows);
-        
-        let mut U: Matrix<T> = A.clone();
+        let mut pr: HashMap<u32, u32> = HashMap::new();
+        let mut pc: HashMap<u32, u32> = HashMap::new();
 
-        let multipliers = U.equilibrate(); //apply multipliers to rhs
-        
-        for i in 0..multipliers.len() {
-            let m = multipliers[i];
-            for j in 0..U.columns {
-                U[[i, j]] *= m;
-            }
+        for i in 0..A.rows {
+            pr.insert(i as u32, i as u32);
         }
+
+        for i in 0..A.columns {
+            pc.insert(i as u32, i as u32);
+        }
+
+        let zero = T::from_f64(0.).unwrap();
+        let one = T::from_f64(1.).unwrap();
+        let threshold = one;
+        let mut s = 1;
+        let size = min(A.columns, A.rows);
+        let mut L: Matrix<T> = Matrix::id(size);
+        let mut U: Matrix<T> = A.clone();
+        let mut E: Matrix<T> = Matrix::id(A.rows); //TODO apply multipliers (E), permutations (P) to rhs when solve
         
-        for i in 0..(U.rows - 1) {
-            let mut p = U[[i, i]]; 
-    
-            if p == zero {
-                for j in (i + 1)..U.rows {
-                    let c = U[[i, j]];
-                    if c != zero {
-                        //exchange rows i and j
-                        //use c as a pivot
-                        p = c;
+        if eq {
+            for i in 0..U.rows {
+                let mut m = zero; 
+                for j in 0..U.columns {
+                    let c = U[[i,j]];
+                    if c.abs() > m.abs() {
+                        m = U[[i,j]];
                     }
                 }
-
-                //if p still zero
-            }
-
-            let mut tmp: Matrix<T> = Matrix::id(A.rows);
-    
-            for j in (i + 1)..U.rows {
-                let e = U[[j, i]];
-
-                let c: T = -e / p;
-                
-                tmp[[j, i]] = c; 
-                
-                for k in i..U.columns {
-                    let v = U[[j,k]];
-                    U[[j,k]] = v + v * c;
+                if m != zero {
+                    E[[i, i]] = one / m; //better ??? row sum ??? row min ???
                 }
             }
             
-            let m = Matrix {
-                data: tmp.data,
-                rows: U.rows,
-                columns: U.columns
-            };
-    
-            L = multiply(&m, &L); //TODO improve
+            U = &E * &U;
+        }
+        
+        for i in 0..(U.rows - 1) {
+            let mut k = i;
+            let mut p = U[[i, i]];
+            
+            for j in (i + 1)..U.rows {
+                let c = U[[j, i]];
+                if c.abs() > p.abs() {
+                    p = c;
+                    k = j;
+                }    
+            }
+            
+            if p == zero {
+                singular = true;
+                for j in ((i + 1)..U.columns).rev() {
+                    p = U[[i, j]];
+                    
+                    for q in (i + 1)..U.rows {
+                        let c = U[[q, j]];
+                        if c.abs() > p.abs() {
+                           p = c;
+                           k = q;
+                        }
+                    }
+
+                    if p != zero {
+                        U.exchange_columns(i, j);
+                        U.exchange_rows(i, k);
+                        s *= -1;
+                        break;
+                    }
+                }
+
+                if p == zero {
+                    break;
+                }
+            } else {
+                if k != i {
+                    U.exchange_rows(k, i);
+                    s *= -1;
+                }
+            }
+            
+            for j in (i + 1)..U.rows {
+                let e: T = U[[j, i]];
+                let c: T = e / p;
+                L[[j, i]] += c;
+                
+                for k in i..U.columns {
+                    U[[j,k]] = U[[j,k]] - U[[i,k]] * c;
+                }
+            }
         }
     
         (L,U)
@@ -418,7 +457,9 @@ impl <T: Number> Matrix<T> {
 
     pub fn id(size: usize) -> Matrix<T> {
 
-        let mut data: Vec<T> = Vec::with_capacity(size * size);
+        let zero = T::from_i32(1).unwrap();
+        
+        let mut data: Vec<T> = vec![zero; size * size];
         
         for i in 0..size {
             data[(size * i) + i] = T::from_i32(1).unwrap();
@@ -614,6 +655,25 @@ impl <T: Number> Matrix<T> {
 
 
 
+    pub fn is_diag(&self) -> bool {
+        let zero = T::from_f64(0.).unwrap();
+
+        for i in 0..self.rows {
+            for j in 0..self.columns {
+                if i == j {
+                    continue;
+                }
+                if self[[i, j]] != zero {
+                    return false;
+                } 
+            }
+        }
+
+        true
+    }
+
+
+
     pub fn is_symmetric(&self) -> bool {
 
         if self.rows != self.columns || self.rows <= 1 {
@@ -758,8 +818,22 @@ fn mul <T:Number>(
 pub fn multiply <T:Number>(A: &Matrix<T>, B: &Matrix<T>) -> Matrix<T> {
 
     assert_eq!(A.columns, B.rows, "matrices dimensions should be compatible A columns {} B rows {}", A.columns, B.rows);
+
+    if A.is_diag() {
+        
+        let mut C = B.clone();
+        //TODO test
+        for i in 0..B.rows {
+            for j in 0..B.columns {
+                C[[i, j]] *= A[[i, i]];        
+            }
+        }
+
+        C
+    } else {
     
-    mul(A, B, A.rows, A.columns, B.columns)
+        mul(A, B, A.rows, A.columns, B.columns)
+    }
 }
 
 
@@ -964,8 +1038,6 @@ pub async fn test_multiplication(hc: f64) {
         Matrix::init_const(&mut r3, 0.);
         let r: Matrix<f64> = add(&r, &r3, false);
         
-
-        
         if !(r == r2) {
             let diff: Matrix<f64> = &r - &r2;
             let s = diff.sum(); 
@@ -997,7 +1069,21 @@ mod tests {
     use crate::{ core::matrix::{ Matrix }, matrix };
     use super::{ get_optimal_depth, eq_bound_eps, multiply, mul_blocks, strassen, decompose_blocks };
     
+
+
+    #[test]
+    fn lu_test() {
+
+        //TODO something wrong with id
+
+        let mut A: Matrix<f64> = Matrix::rand(4, 4, 10.); //TODO should accept T
+
+        let (L, U) = Matrix::lu(&A);
+
+        assert!(false, "\n L is \n {} \n | U is \n {} \n \n", L, U);
+    }
     
+
 
     #[test]
     fn transpose() {
