@@ -204,6 +204,19 @@ pub struct Matrix <T> {
 
 
 
+#[derive(Clone, Debug)]
+pub struct lu_decomposition <T: Number> {
+    L: Matrix<T>,
+    U: Matrix<T>,
+
+    /*
+    E: Matrix<T>, 
+    P: Matrix<T>, 
+    Q: Matrix<T>
+    */
+}
+
+
 impl <T: Number> Matrix<T> {
 
     pub fn new(rows: usize, columns:usize) -> Matrix<T> {
@@ -259,57 +272,82 @@ impl <T: Number> Matrix<T> {
 
 
 
-    fn lu (A: &Matrix<T>) -> (Matrix<T>, Matrix<T>) {
-        
-        
+    fn solve(&self) {
         //TODO keep track of number of rows interchanges (det sign)
         //TODO is singular ? (kth stage - sum remaining column entries - remainder is 0 - singularity)
         //TODO det product of U diag
         //TODO rows > columns
         //TODO columns > rows
-        //TODO EA, need E inv
-        //TODO PA, need P inv (keep track of permutations)
-
         //TODO perform matrix type pre-checks (symmetric, positive definite, etc) (optional equilibration + partial pivoting)
-        let eq = false;
-        let mut singular = false;
 
-        let mut pr: HashMap<u32, u32> = HashMap::new();
-        let mut pc: HashMap<u32, u32> = HashMap::new();
+        //is it possible to rearrange L to act on proper rows ?
+    }
 
-        for i in 0..A.rows {
-            pr.insert(i as u32, i as u32);
-        }
 
-        for i in 0..A.columns {
-            pc.insert(i as u32, i as u32);
-        }
 
-        let zero = T::from_f64(0.).unwrap();
-        let one = T::from_f64(1.).unwrap();
-        let threshold = one;
-        let mut s = 1;
-        let size = min(A.columns, A.rows);
-        let mut L: Matrix<T> = Matrix::id(size);
-        let mut U: Matrix<T> = A.clone();
-        let mut E: Matrix<T> = Matrix::id(A.rows); //TODO apply multipliers (E), permutations (P) to rhs when solve
-        
-        if eq {
-            for i in 0..U.rows {
-                let mut m = zero; 
-                for j in 0..U.columns {
-                    let c = U[[i,j]];
-                    if c.abs() > m.abs() {
-                        m = U[[i,j]];
-                    }
-                }
-                if m != zero {
-                    E[[i, i]] = one / m; //better ??? row sum ??? row min ???
+    fn lu_eq() {
+        /*
+        for i in 0..U.rows {
+            let mut m = zero; 
+            for j in 0..U.columns {
+                let c = U[[i,j]];
+                if c.abs() > m.abs() {
+                    m = U[[i,j]];
                 }
             }
-            
-            U = &E * &U;
+            if m != zero {
+                E[[i, i]] = one / m; //better ??? row sum ??? row min ???
+            }
         }
+        
+        U = &E * &U;
+
+        for i in 0..E.rows {
+            E[[i,i]] = one / E[[i,i]];
+        }
+        */
+    }
+
+
+
+    fn generate_permutations(size: usize) -> Vec<Matrix<f32>> {
+        let m: Matrix<f32> = Matrix::id(size);
+        let mut list: Vec<Matrix<f32>> = Vec::new();
+        
+        for i in 0..size {
+            for j in 0..size {
+                if i != j {
+                    let mut k = Matrix::id(size);
+                    k.exchange_rows(i, j);
+                    list.push(k);
+                } 
+            }
+        }
+
+        let l = list.len();
+        for i in 0..l {
+            let A = &list[l - 1 - i];
+            let P = &list[i];
+            let p = A * P;
+            list.push(p);
+        }
+
+        list
+    }
+    
+
+
+    fn lu (A: &Matrix<T>) -> lu_decomposition<T> {
+
+        let size = min(A.columns, A.rows);
+        
+        let mut L: Matrix<T> = Matrix::id(size);
+        let mut U: Matrix<T> = A.clone();
+
+        let mut M: Matrix<T> = Matrix::id(size);
+        let mut P_total: Matrix<T> = Matrix::id(size);
+        //let mut Q: Matrix<T> = Matrix::id(size);
+        //let mut E: Matrix<T> = Matrix::id(A.rows);
         
         for i in 0..(U.rows - 1) {
             let mut k = i;
@@ -322,7 +360,18 @@ impl <T: Number> Matrix<T> {
                     k = j;
                 }    
             }
+
+            let mut P: Matrix<T> = Matrix::id(size);
+            if k != i {
+                P.exchange_rows(i, k);
+
+                P_total.exchange_rows(i, k); //?
+
+                U = &P * &U;
+                //M = &M * &P;
+            }
             
+            /*
             if p == zero {
                 singular = true;
                 for j in ((i + 1)..U.columns).rev() {
@@ -337,8 +386,12 @@ impl <T: Number> Matrix<T> {
                     }
 
                     if p != zero {
+                        
                         U.exchange_columns(i, j);
+                        Q.exchange_columns(i, j);
+
                         U.exchange_rows(i, k);
+                        P.exchange_rows(i, k);
                         s *= -1;
                         break;
                     }
@@ -347,25 +400,43 @@ impl <T: Number> Matrix<T> {
                 if p == zero {
                     break;
                 }
-            } else {
-                if k != i {
-                    U.exchange_rows(k, i);
-                    s *= -1;
-                }
             }
-            
+            */
+            let mut Ln: Matrix<T> = Matrix::id(size);
+
             for j in (i + 1)..U.rows {
                 let e: T = U[[j, i]];
                 let c: T = e / p;
-                L[[j, i]] += c;
                 
-                for k in i..U.columns {
-                    U[[j,k]] = U[[j,k]] - U[[i,k]] * c;
+                Ln[[j, i]] = c;
+
+                for t in i..U.columns {
+                    U[[j,t]] = U[[j,t]] - U[[i,t]] * c;
                 }
             }
+
+            //let tmp = Ln[[i, i]];
+            //Ln[[i, i]] = Ln[[k, i]];
+            //Ln[[k, i]] = tmp;
+            //2 entries
+
+            Ln.exchange_rows(i, k);
+
+            let exmpl = &P_total * &Ln;
+
+            M = &M * &(Ln); //add rearranged column
+
+            println!("\n stage {} \n exmpl {} \n Ln is {} \n M is {} \n", i, exmpl, Ln, M);
+
         }
     
-        (L,U)
+        lu_decomposition {
+            //E, 
+            //P, 
+            //Q, 
+            L: M,
+            U
+        }
     }
 
 
@@ -457,7 +528,7 @@ impl <T: Number> Matrix<T> {
 
     pub fn id(size: usize) -> Matrix<T> {
 
-        let zero = T::from_i32(1).unwrap();
+        let zero = T::from_i32(0).unwrap();
         
         let mut data: Vec<T> = vec![zero; size * size];
         
@@ -878,12 +949,14 @@ impl <T: Number> Display for Matrix<T> {
                 let n = self[[i,j]];
                 let s = T::to_string(&n);
                 acc = acc + &s;
-                acc = acc + ",";
+                if j < self.columns - 1 {
+                    acc = acc + ", ";
+                }
             }
-            acc = acc + "] \n";
+            acc = acc + "]\n";
         }
 
-        write!(f, "\n {} \n", acc)
+        write!(f, "\n{}\n", acc)
     }
 }
 
@@ -1067,20 +1140,83 @@ mod tests {
     use rand::Rng;
     use std::{ f32::EPSILON as EP, f64::EPSILON, f64::consts::PI };
     use crate::{ core::matrix::{ Matrix }, matrix };
-    use super::{ get_optimal_depth, eq_bound_eps, multiply, mul_blocks, strassen, decompose_blocks };
+    use super::{ Number, get_optimal_depth, eq_bound_eps, multiply, mul_blocks, strassen, decompose_blocks };
+
+
+
+    #[test] 
+    fn perm_test() {
+        let p = Matrix::<f32>::generate_permutations(4);
+
+        for i in 0..p.len() {
+            //println!("P next is {} \n", p[i]);
+        }
+
+        //assert!(false);
+    }
+
+    #[test]
+    fn lu_test() {
+        
+        let mut A: Matrix<f32> = matrix![f32,
+            1.3968362, -0.97569525, -5.018955, 0.7136311;
+            -4.6254315, 9.305554, 2.5439813, 1.9787005;
+            -3.233496, -4.881222, -3.2327516, 3.0223584;
+            -1.1067164, -4.347563, -8.04766, 1.6895233;
+        ];
+
+        let mut lu = Matrix::lu(&A);
+        
+        let R: Matrix<f32> = &lu.L * &lu.U;
+
+        println!("\n A is {} \n R is {} \n L is {} \n U is {} \n diff is {}", A, R, lu.L, lu.U, &A - &R);
+        
+        assert!(false);
+    }
     
 
 
     #[test]
-    fn lu_test() {
+    fn exchange_rows() {
 
-        //TODO something wrong with id
+        let mut m: Matrix<f32> = matrix![f32,
+            -3., -3.,  8., 6.;
+            -2.,  5., -8., 5.;
+            -8., -5., -3., 0.;
+            -1.,  0., -3., 3.;
+        ];
 
-        let mut A: Matrix<f64> = Matrix::rand(4, 4, 10.); //TODO should accept T
+        m.exchange_rows(0, 3);
 
-        let (L, U) = Matrix::lu(&A);
+        //assert!(false, "\n here {} \n", m);
 
-        assert!(false, "\n L is \n {} \n | U is \n {} \n \n", L, U);
+    }
+
+
+
+    #[test]
+    fn exchange_columns() {
+
+        let mut m: Matrix<f32> = matrix![f32,
+            -3., -3.,  8., 6.;
+            -2.,  5., -8., 5.;
+            -8., -5., -3., 0.;
+            -1.,  0., -3., 3.;
+        ];
+
+        m.exchange_columns(0, 3);
+
+        //assert!(false, "\n here {} \n", m);
+    }
+
+
+    
+    #[test]
+    fn id_test() {
+
+        let id: Matrix<f64> = Matrix::id(5);
+        
+        assert!(id.is_diag(), "\n ID should be diagonal {} \n \n", id);
     }
     
 
@@ -1164,7 +1300,7 @@ mod tests {
 
 
 
-    #[test]
+    //#[test]
     fn multiply_test() {
         
         let discard_zero_blocks = true;
