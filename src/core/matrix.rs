@@ -33,7 +33,7 @@ use rand::Rng;
 use num_traits::{Float, Num, NumAssignOps, NumOps, PrimInt, Signed, cast, identities};
 use web_sys::Event;
 use crate::{Number, workers::Workers};
-use super::{lu::{lu, lu_v1, lu_v2}, matrix3::Matrix3, matrix4::Matrix4, multiply::{ multiply_threads, strassen, mul_blocks, get_optimal_depth, decompose_blocks }};
+use super::{lu::{lu, lu_v2}, matrix3::Matrix3, matrix4::Matrix4, multiply::{ multiply_threads, strassen, mul_blocks, get_optimal_depth, decompose_blocks }};
 
 /*
 TODO 
@@ -323,7 +323,6 @@ impl <T: Number> Matrix<T> {
 
     
     pub fn lu (A: &Matrix<T>) -> lu<T> {
-        //lu_v1(A)
         lu_v2(A)
     }
     
@@ -629,6 +628,24 @@ impl <T: Number> Matrix<T> {
         }
 
         true
+    }
+
+
+
+    pub fn is_upper_triangular() {
+
+    }
+
+
+
+    pub fn is_lower_triangular() {
+
+    }
+
+
+
+    pub fn is_permutation() {
+
     }
 
 
@@ -950,6 +967,73 @@ impl <T: Number> From<Matrix4> for Matrix<T> {
 
 
 
+pub struct P_compact <T> {
+    pub map: Vec<T>
+}
+
+impl <T: Number> P_compact <T> {
+    
+    pub fn new(s: usize) -> P_compact<T> {
+        let z = T::from_i32(0).unwrap();
+        let mut map = vec![z; s];
+
+        for i in 0..s {
+            map[i] = T::from_i32(i as i32).unwrap();
+        }
+
+        P_compact {
+            map
+        }
+    }
+
+
+
+    pub fn exchange_rows(&mut self, i: usize, j: usize) {
+        let r = self.map[i];
+        let l = self.map[j];
+        self.map[j] = r;
+        self.map[i] = l;
+    }
+
+
+
+    pub fn exchange_columns(&mut self, i: usize, j: usize) {
+        let r = T::to_i32(&self.map[i]).unwrap() as usize;
+        let l = T::to_i32(&self.map[j]).unwrap() as usize;
+        self.exchange_rows(r, l);
+    }
+
+
+
+    pub fn into_p(&self) -> Matrix<T> {
+        let s = self.map.len();
+        let mut m: Matrix<T> = Matrix::new(s, s);
+
+        for i in 0..s {
+            let j = T::to_i32(&self.map[i]).unwrap() as usize;
+            m[[i, j]] = T::from_i32(1).unwrap();
+        }
+
+        m
+    }
+
+
+
+    pub fn into_p_t(&self) -> Matrix<T> {
+        let s = self.map.len();
+        let mut m: Matrix<T> = Matrix::new(s, s);
+
+        for i in 0..s {
+            let j = T::to_i32(&self.map[i]).unwrap() as usize;
+            m[[j, i]] = T::from_i32(1).unwrap();
+        }
+
+        m
+    }
+}
+
+
+
 #[wasm_bindgen]
 pub async fn test_multiplication(hc: f64) {
 
@@ -1028,7 +1112,59 @@ mod tests {
     use rand::Rng;
     use std::{ f32::EPSILON as EP, f64::EPSILON, f64::consts::PI };
     use crate::{ core::matrix::{ Matrix }, matrix };
-    use super::{ Number, get_optimal_depth, eq_bound_eps, multiply, mul_blocks, strassen, decompose_blocks };
+    use super::{ P_compact, Number, get_optimal_depth, eq_bound_eps, multiply, mul_blocks, strassen, decompose_blocks };
+
+
+
+    #[test]
+    fn lu_test() {
+        let rows = 5;
+        let columns = 5;
+        let max = 100.;
+        
+        /*
+        let mut A: Matrix<f32> = matrix![f32,
+            1.3968362, -0.97569525, -5.018955, 0.7136311;
+            -4.6254315, 9.305554, 2.5439813, 1.9787005;
+            -3.233496, -4.881222, -3.2327516, 3.0223584;
+            -1.1067164, -4.347563, -8.04766, 1.6895233;
+        ];
+        */
+
+        let mut A: Matrix<f32> = Matrix::rand(rows, columns, max);
+        
+        let mut lu = Matrix::lu(&A);
+        
+        let R: Matrix<f32> = &lu.L * &lu.U;
+
+        let PL: Matrix<f32> = &lu.P * &lu.L;
+
+        println!("\n A is {} \n R is {} \n L is {} \n U is {} \n PL is {} \n diff is {} \n", A, R, lu.L, lu.U, PL, &A - &R);
+        
+        assert!(false);
+    }
+
+
+    #[test] 
+    fn p_compact() {
+        
+        let mut p: P_compact<i32> = P_compact::new(4);
+
+        //p.exchange_rows(1, 3);
+        //p.exchange_rows(1, 2);
+        
+        p.exchange_columns(0, 3);
+
+        let p_m = p.into_p();
+
+        let p_m_t = p.into_p_t();
+
+        println!("\n p is {} \n", p_m);
+
+        println!("\n p t is {} \n", p_m_t);
+
+        //assert!(false);
+    }
 
 
 
@@ -1071,32 +1207,6 @@ mod tests {
         -2.4211168, 0.5297522, 0.13825515, 4.060872;
     ];
     */
-    
-    #[test]
-    fn lu_test() {
-        let rows = 4;
-        let columns = 4;
-        let max = 10.;
-        
-        let mut A: Matrix<f32> = matrix![f32,
-            1.3968362, -0.97569525, -5.018955, 0.7136311;
-            -4.6254315, 9.305554, 2.5439813, 1.9787005;
-            -3.233496, -4.881222, -3.2327516, 3.0223584;
-            -1.1067164, -4.347563, -8.04766, 1.6895233;
-        ];
-        
-        //Matrix::rand(rows, columns, max);
-        
-        let mut lu = Matrix::lu(&A);
-        
-        let R: Matrix<f32> = &lu.L * &lu.U;
-
-        let PL: Matrix<f32> = &lu.P * &lu.L;
-
-        println!("\n A is {} \n R is {} \n L is {} \n U is {} \n PL is {} \n diff is {} \n", A, R, lu.L, lu.U, PL, &A - &R);
-        
-        assert!(false);
-    }
     
     /*
     let LP: Matrix<f32> = &lu.L * &lu.P;

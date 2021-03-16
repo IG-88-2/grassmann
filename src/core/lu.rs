@@ -1,6 +1,6 @@
-use std::{cmp::min, collections::{HashMap, HashSet}};
+use std::{cmp::min, collections::{HashMap, HashSet}, f32::EPSILON};
 use crate::Number;
-use super::matrix::Matrix;
+use super::matrix::{Matrix, P_compact};
 
 
 
@@ -16,16 +16,20 @@ pub struct lu <T: Number> {
     */
 }
 
-/*
+//Q
+//rows > columns
+//columns > rows
+//singular
+//initial equilibration 
 pub fn lu_v2<T: Number>(A: &Matrix<T>) -> lu<T> {
 
     let size = min(A.columns, A.rows);
-    
-    let mut L: Matrix<T> = Matrix::id(size);
+
+    let mut P: P_compact<T> = P_compact::new(size);
     let mut U: Matrix<T> = A.clone();
-    let mut P: Matrix<T> = Matrix::id(size);
-    
-    for i in 0..(U.rows - 1) {
+    let mut L: Matrix<T> = Matrix::new(size, size);
+
+    for i in 0..U.rows {
         let mut k = i;
         let mut p = U[[i, i]];
         
@@ -37,56 +41,63 @@ pub fn lu_v2<T: Number>(A: &Matrix<T>) -> lu<T> {
             }    
         }
         
+        if T::to_f32(&p).unwrap() == 0. {
+           println!("\n step {} \n matrix is singular \n A {} \n U {} \n L {} \n", i + 1, A, U, L);
+        }
+
         if k != i {
             P.exchange_rows(i, k);
             U.exchange_rows(i, k);
         }
-
-        //goal get rid of Ln, inject c in M according to P rule
-        let mut Ln: Matrix<T> = Matrix::id(size);
-        let mut Pn: Matrix<T> = Matrix::id(size);
-
-        for j in (i + 1)..U.rows {
+        
+        for j in i..U.rows {
+            let h = T::to_i32(&P.map[j]).unwrap() as usize;
             let e: T = U[[j, i]];
             let c: T = e / p;
-            
-            Ln[[j, i]] = c;
 
+            L[[h, i]] = c;
+
+            if j == i {
+               continue;
+            }
+            
             for t in i..U.columns {
                 U[[j,t]] = U[[j,t]] - U[[i,t]] * c;
             }
         }
-        
-        //Pn.exchange_rows(i, k); //P Ln - action on rows
-        
-        //L = &L * &(&Pn * &Ln);
-        L.exchange_columns(i, k);
-
-        L = &L * &(&Pn * &Ln);
-        
-        println!("\n step {} L is {} \n Ln is {} \n", i, L, Ln);
     }
-
+    
     lu {
-        P,
+        P: P.into_p(),
         L,
         U
     }
 }
-*/
 
+
+
+/*
 pub fn lu_v2<T: Number>(A: &Matrix<T>) -> lu<T> {
+    //robust and stable for square matrices
+    //singular
+    //col > row
+    //row > col
+    let mut permutation: HashMap<usize, usize> = HashMap::new();
 
-    let size = min(A.columns, A.rows);
+    let mut p2: HashMap<usize, usize> = HashMap::new();
+
     let zero = T::from_i32(0).unwrap();
+    let size = min(A.columns, A.rows);
+
+    for i in 0..size {  
+        permutation.insert(i, i);
+    }
+
     let mut L: Matrix<T> = Matrix::id(size);
-    let mut Ltest: Matrix<T> = Matrix::id(size);
+    let mut L_test: Matrix<T> = Matrix::id(size);
 
     let mut U: Matrix<T> = A.clone();
     let mut P: Matrix<T> = Matrix::id(size);
-    let mut Q: Matrix<T> = Matrix::id(size);
-    let mut Ptest: Matrix<T> = Matrix::id(size);
-
     
     for i in 0..U.rows {
         let mut k = i;
@@ -100,60 +111,87 @@ pub fn lu_v2<T: Number>(A: &Matrix<T>) -> lu<T> {
             }    
         }
         
+        //below epsilon
+        if p == zero {
+           break;
+        }
+
         if k != i {
+            let index1 = *permutation.get(&i).unwrap();
+            let index2 = *permutation.get(&k).unwrap();
+
+            permutation.insert(i, index2);
+            permutation.insert(k, index1);
+
+            //p2.insert(i, k);
+            p2.insert(k, i);
+            
             P.exchange_rows(i, k);
             U.exchange_rows(i, k);
         }
         
         let mut Ln: Matrix<T> = Matrix::id(size);
         
-        //Matrix::init_const(&mut Ln, 0.);
-
         for j in (i + 1)..U.rows {
             let e: T = U[[j, i]];
             let c: T = e / p;
+            let idx = p2.get(&j);//.unwrap();
+            //keep track of permutation transposed ?
+            let index = *permutation.get(&j).unwrap();
             
-            Ln[[j, i]] = c;
+            let row = index;
+
+            let index2 = *permutation.get(&index).unwrap();
+
+            //let row = index2;
+
+            Ln[[j, i]] = c; //remove
+
+            //current row is j
+            //get hash
+            //
+            if idx.is_some() {
+                let n = *idx.unwrap();
+                L[[n, i]] = c;
+            } else {
+                L[[j, i]] = c;
+            }
 
             for t in i..U.columns {
                 U[[j,t]] = U[[j,t]] - U[[i,t]] * c;
             }
         }
         
-        //L.exchange_columns(i, k); //L P
-        
-        let mut Pk: Matrix<T> = Matrix::id(size);
-        Pk.exchange_rows(i, k);
-        Ptest = &Ptest * &Pk;
-        let mut tmp: Matrix<T> = &Ptest * &Ln.clone();
-
-        //Ln Q
-        //let tmp = &Ln * &Q;
-        //L = &L * &P;
-
-
+        //remove
+        let P_t = P.transpose();
+        let tmp: Matrix<T> = &P_t * &Ln;
         for j in 0..U.rows {
-            Ltest[[j, i]] = tmp[[j, i]]; //Ln[[j, i]];
+            L_test[[j, i]] = tmp[[j, i]];
         }
 
-        L = &(&L * &Pk) * &Ln;
+
+        let mut P_verify: Matrix<T> = Matrix::id(size); 
         
-        //easy step produce from Ln column vector of the same for as being embedded into L
+        Matrix::init_const(&mut P_verify, 0.);
+
+        for i in 0..size {
+            let col = *permutation.get(&i).unwrap();
+            P_verify[[i,col]] = T::from_i16(1).unwrap();
+        }
         
-        println!("\n step {} \n L is {} \n Ln {} \n Ltest {}", i + 1, L, tmp, Ltest);
+        //println!("\n step {} \n L is {} \n Ln {} \n L {}", i + 1, L, tmp, L);
+        println!("\n step {} \n L good is {} \n L bad {} \n P is {} \n Pver is {}", i + 1, L_test, L, P, P_verify);
     }
-
-    //L = &L * &P;
-
+    
     lu {
         P,
-        L: Ltest,
+        L: L_test,
         U
     }
 }
+*/
 
-
-
+/*
 pub fn lu_v1<T: Number>(A: &Matrix<T>) -> lu<T> {
 
     let mut h: HashSet<usize> = HashSet::new();
@@ -227,7 +265,7 @@ pub fn lu_v1<T: Number>(A: &Matrix<T>) -> lu<T> {
         U
     }
 }
-
+*/
 /*
 pub fn lu_v2<T: Number>(A: &Matrix<T>) -> lu<T> {
 
