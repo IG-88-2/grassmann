@@ -1131,11 +1131,21 @@ mod tests {
         ];
         */
 
-        let mut A: Matrix<f32> = Matrix::rand(rows, columns, max);
+        //square and singular
+        let mut A: Matrix<f32> = matrix![f32,
+            1., 2., 1., 1.;
+            1., 2., 2., 2.;
+            1., 2., 3., 1.;
+            1., 2., 4., 2.;
+        ];
+        
+        //Matrix::rand(rows, columns, max);
         
         let mut lu = Matrix::lu(&A);
         
-        let R: Matrix<f32> = &lu.L * &lu.U;
+        let Qt = lu.Q.transpose();
+
+        let R: Matrix<f32> = &(&lu.Q * &lu.L) * &lu.U;
 
         let PL: Matrix<f32> = &lu.P * &lu.L;
 
