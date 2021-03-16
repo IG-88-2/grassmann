@@ -672,6 +672,11 @@ impl <T: Number> Matrix<T> {
 
         true
     }
+
+    pub fn with_col_rank(r: u32) {}
+
+    pub fn with_row_rank(r: u32) {} 
+
 }
 
 
@@ -1130,8 +1135,8 @@ mod tests {
             -1.1067164, -4.347563, -8.04766, 1.6895233;
         ];
         */
-
-        //square and singular
+        
+        
         let mut A: Matrix<f32> = matrix![f32,
             1., 2., 1., 1.;
             1., 2., 2., 2.;
@@ -1139,17 +1144,18 @@ mod tests {
             1., 2., 4., 2.;
         ];
         
+        
         //Matrix::rand(rows, columns, max);
         
         let mut lu = Matrix::lu(&A);
         
-        let Qt = lu.Q.transpose();
-
-        let R: Matrix<f32> = &(&lu.Q * &lu.L) * &lu.U;
+        let R: Matrix<f32> = &lu.L * &lu.U;
 
         let PL: Matrix<f32> = &lu.P * &lu.L;
 
-        println!("\n A is {} \n R is {} \n L is {} \n U is {} \n PL is {} \n diff is {} \n", A, R, lu.L, lu.U, PL, &A - &R);
+        let withQ = &lu.U * &lu.Q;
+
+        println!("\n A is {} \n R is {} \n L is {} \n U is {} \n PL is {} \n diff is {} \n withQ {} ", A, R, lu.L, lu.U, PL, &A - &R, withQ);
         
         assert!(false);
     }

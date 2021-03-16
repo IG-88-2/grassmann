@@ -20,97 +20,81 @@ pub struct lu <T: Number> {
 //columns > rows
 //singular
 //initial equilibration 
+//edge cases - [1] [1,2,3] [1,2,3]T [0,0,0], all ones etc
+
 pub fn lu_v2<T: Number>(A: &Matrix<T>) -> lu<T> {
 
     let size = min(A.columns, A.rows);
     let mut P: P_compact<T> = P_compact::new(size);
-    //apply Q immediately, apply Q after ?
     let mut Q: P_compact<T> = P_compact::new(A.columns);
     let mut U: Matrix<T> = A.clone();
     let mut L: Matrix<T> = Matrix::new(size, size);
-
+    let mut d: Vec<u32> = Vec::new();
+    let mut row = 0;
+    let mut col = 0;
+    
     for i in 0..U.rows {
-        let mut k = i;
-        let mut p = U[[i, i]];
+        let mut k = row;
+        let mut p = U[[row, col]];
         
-        
-
-        for j in (i + 1)..U.rows {
-            let c = U[[j, i]];
+        for j in (row + 1)..U.rows {
+            let c = U[[j, col]];
             if c.abs() > p.abs() {
                 p = c;
                 k = j;
             }    
         }
         
-        //this columns i bad
         if T::to_f32(&p).unwrap() == 0. {
-
-            //find first usable column, keep track of flawed columns
-
-            //println!("\n step {} \n matrix is singular \n A {} \n U {} \n L {} \n", i + 1, A, U, L);
-            
-            // skip column, reorder later ?
-
-            for j in ((i + 1)..U.columns).rev() {
-                p = U[[i, j]];
-                
-                for q in (i + 1)..U.rows {
-                    let c = U[[q, j]];
-                    if c.abs() > p.abs() {
-                        p = c;
-                        k = q;
-                    }
-                }
-
-                if T::to_f32(&p).unwrap() != 0. {
-                    Q.exchange_rows(i, j);
-                    //U.exchange_columns(i, j);
-                    
-                    P.exchange_rows(i, k);
-                    U.exchange_rows(i, k);
-                    break;
-                }
-            }
-
-            println!("\n step {} \n U {} \n L {} \n", i + 1, U, L);
-
-            if T::to_f32(&p).unwrap() == 0. {
-                println!("\n step {} \n done for singular matrix \n A {} \n U {} \n L {} \n", i + 1, A, U, L);
-                break;
-            }
-
-
-
+            d.push(i as u32);
+            col += 1;
+            continue;
         } else {
 
-            if k != i {
-                P.exchange_rows(i, k);
-                U.exchange_rows(i, k);
+            if k != row {
+                P.exchange_rows(row, k);
+                U.exchange_rows(row, k);
             }
         }
         
-        for j in i..U.rows {
+        for j in row..U.rows {
             let h = T::to_i32(&P.map[j]).unwrap() as usize;
-            let e: T = U[[j, i]];
+            let e: T = U[[j, col]];
             let c: T = e / p;
+            
+            L[[h, row]] = c;
 
-            L[[h, i]] = c;
-
-            if j == i {
+            if j == row {
                continue;
             }
             
-            for t in i..U.columns {
-                U[[j,t]] = U[[j,t]] - U[[i,t]] * c;
+            for t in col..U.columns {
+                U[[j,t]] = U[[j,t]] - U[[row,t]] * c;
             }
         }
+        
+        println!("\n next step {} \n L {} \n U {} \n ", i + 1, L, U);
+
+        row += 1;
+        col += 1;
     }
+    
+    //wrong how can i keep them upper triangular ?
+
+    let mut last = A.columns - 1;
+
+    for i in 0..d.len() {
+        let next = d[i] as usize;
+        Q.exchange_rows(next, last);
+        last -= 1;
+    }
+
+    println!("\n done Q is {} \n", Q.into_p());
     
     lu {
         P: P.into_p(),
+        Q: Q.into_p(),
         L,
-        U,
-        Q: P.into_p()
+        U
     }
 }
