@@ -115,7 +115,10 @@ impl <T:Number> Vector <T> {
 
 
 fn add<T:Number>(a:&Vector<T>, b:&Vector<T>) -> Vector<T> {
-    let mut v: Vector<T> = vector![];
+
+    let zero = identities::zero();
+
+    let mut v: Vector<T> = Vector::new(vec![zero; a.data.len()]);
 
     for i in 0..a.data.len() {
         v[i] = a[i] + b[i];
@@ -127,7 +130,10 @@ fn add<T:Number>(a:&Vector<T>, b:&Vector<T>) -> Vector<T> {
 
 
 fn sub<T:Number>(a:&Vector<T>, b:&Vector<T>) -> Vector<T> {
-    let mut v: Vector<T> = vector![];
+
+    let zero = identities::zero();
+
+    let mut v: Vector<T> = Vector::new(vec![zero; a.data.len()]);
 
     for i in 0..a.data.len() {
         v[i] = a[i] - b[i];
@@ -139,6 +145,7 @@ fn sub<T:Number>(a:&Vector<T>, b:&Vector<T>) -> Vector<T> {
 
 
 fn mul<T:Number>(a:&Vector<T>, b:&Vector<T>) -> Option<Float> {
+
     let mut acc: T = identities::zero();
 
     if a.data.len() != b.data.len() {
@@ -346,12 +353,37 @@ impl <T:Number> Neg for Vector<T> {
 
 
 
+impl <T:Number> From<&Vector3> for Vector<T> {
+    fn from(v: &Vector3) -> Vector<T> {
+        vector![
+            T::from_f64(v.x).unwrap(),
+            T::from_f64(v.y).unwrap(),
+            T::from_f64(v.z).unwrap()
+        ]
+    }
+}
+
+
+
 impl <T:Number> From<Vector3> for Vector<T> {
     fn from(v: Vector3) -> Vector<T> {
         vector![
             T::from_f64(v.x).unwrap(),
             T::from_f64(v.y).unwrap(),
             T::from_f64(v.z).unwrap()
+        ]
+    }
+}
+
+
+
+impl <T:Number> From<&Vector4> for Vector<T> {
+    fn from(v: &Vector4) -> Vector<T> {
+        vector![
+            T::from_f64(v.x).unwrap(),
+            T::from_f64(v.y).unwrap(),
+            T::from_f64(v.z).unwrap(),
+            T::from_f64(v.t).unwrap()
         ]
     }
 }
@@ -368,6 +400,7 @@ impl <T:Number> From<Vector4> for Vector<T> {
         ]
     }
 }
+
 
 
 mod tests {

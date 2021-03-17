@@ -65,6 +65,7 @@ Au = d - solve for u
 next x = x - u (shifting x towards better accuracy)
 */
 
+//TODO translation belong to n + 1 class
 
 
 //jacobian
@@ -186,6 +187,18 @@ macro_rules! matrix {
 
 
 
+#[macro_export]
+macro_rules! compose_m {
+    ($v:expr) => { $v };
+    ($v:expr, $($x:expr),+) => {
+
+        &( $v ) * &( compose_m!($($x),*) )
+
+    }
+}
+
+
+
 #[derive(Clone, Debug)]
 pub struct Matrix <T> {
     pub rows: usize,
@@ -251,12 +264,24 @@ impl <T: Number> Matrix<T> {
 
 
     pub fn lu (&self) -> lu<T> {
-        lu_v2(self)
+        let mut lu = lu_v2(self);
+        lu
     }
 
 
 
-    fn solve(&self, b: &Vector<T>, lu: &lu<T>) -> Vector<T> {
+    pub fn rank(&self) -> u32 {
+
+        let lu = self.lu();
+
+        let rank = min(self.rows, self.columns) - lu.d.len();
+
+        rank as u32
+    }
+
+
+
+    pub fn solve(&self, b: &Vector<T>, lu: &lu<T>) -> Vector<T> {
         let zero = T::from_f64(0.).unwrap();
         let Pb: Vector<T> = &lu.P * b;
         let PL: Matrix<T> = &lu.P * &lu.L;
@@ -329,10 +354,11 @@ impl <T: Number> Matrix<T> {
 
     
 
+    pub fn apply(&mut self, f: &dyn Fn(T) -> T) {
+        self.data = self.data.iter().map(|x:&T| f(*x)).collect();
+    }
     
     
-    
-
 
     pub fn inv(&self) -> Matrix<T> {
         //if matrix diagonal 1/e
@@ -797,6 +823,61 @@ impl <T: Number> Matrix<T> {
 
         true
     }
+
+
+
+    pub fn from_basis(
+        b: Vec<Vector<T>>
+    ) -> Matrix<T> {
+        
+        if b.len() == 0 {
+           return Matrix::new(0, 0);
+        }
+
+        let rows = b[0].data.len();
+
+        let equal = b.iter().all(|v| v.data.len() == rows);
+        
+        assert!(equal, "\n from basis: vectors should have equal length \n");
+
+        let columns = b.len();
+        
+        let mut m = Matrix::new(rows, columns);
+
+        for i in 0..columns {
+            let next = &b[i];
+            for j in 0..rows {
+                m[[j, i]] = next[j];
+            }
+        }
+
+        m
+    }
+
+
+
+    pub fn into_basis(&self) -> Vec<Vector<T>> {
+
+        let zero = T::from_f64(0.).unwrap();
+        let mut b: Vec<Vector<T>> = Vec::new();
+
+        for i in 0..self.columns {
+            let mut v = Vector::new(vec![zero; self.rows]);
+            for j in 0..self.rows {
+                v[j] = self[[j, i]];
+            }
+            b.push(v);
+        }
+
+        b
+    }
+
+
+
+    //TODO
+    pub fn wedge() {
+
+    }
 }
 
 
@@ -1130,19 +1211,57 @@ impl <T: Number> Mul for Matrix<T>
 
 
 
+fn from_data <T: Number> (s: usize, d: Vec<f64>) -> Matrix<T> {
+
+    let data: Vec<T> = d.iter().map(|x| { T::from_f64(*x).unwrap() }).collect();
+
+    let mut m = Matrix::new(s, s);
+
+    m.set_vec(data);
+
+    m
+}
+
+
+
+fn from_vector <T: Number> (v: &Vector<T>) -> Matrix<T> {
+
+    let mut m = Matrix::new(v.data.len(), 1);
+
+    for i in 0..v.data.len() {
+        m[[i, 0]] = v[i];
+    }
+    
+    m
+}
+
+
+
+impl <T:Number> From<Vector<T>> for Matrix<T> {
+    fn from(v: Vector<T>) -> Matrix<T> {
+        
+        from_vector(&v)
+    }
+}
+
+
+
+impl <T:Number> From<&Vector<T>> for Matrix<T> {
+    fn from(v: &Vector<T>) -> Matrix<T> {
+        
+        from_vector(v)
+    }
+}
+
+
+
 impl <T: Number> From<Matrix3> for Matrix<T> {
 
     fn from(m: Matrix3) -> Matrix<T> {
 
         let d: Vec<f64> = m.data.into();
 
-        let data: Vec<T> = d.iter().map(|x| { T::from_f64(*x).unwrap() }).collect();
-
-        let mut m = Matrix::new(3,3);
-    
-        m.set_vec(data);
-    
-        m
+        from_data(3, d)
     }
 }
 
@@ -1154,13 +1273,44 @@ impl <T: Number> From<Matrix4> for Matrix<T> {
 
         let d: Vec<f64> = m.data.into();
 
-        let data: Vec<T> = d.iter().map(|x| { T::from_f64(*x).unwrap() }).collect();
+        from_data(4, d)
+    }
+}
 
-        let mut m = Matrix::new(4,4);
+
+
+impl <T: Number> From<&Matrix3> for Matrix<T> {
+
+    fn from(m: &Matrix3) -> Matrix<T> {
+
+        let d: Vec<f64> = m.data.into();
+
+        from_data(3, d)
+    }
+}
+
+
+
+impl <T: Number> From<&Matrix4> for Matrix<T> {
+
+    fn from(m: &Matrix4) -> Matrix<T> {
+
+        let d: Vec<f64> = m.data.into();
+
+        from_data(4, d)
+    }
+}
+
+
+
+impl <T:Number> Neg for Matrix<T> {
+
+    type Output = Matrix<T>;
     
-        m.set_vec(data);
-    
-        m
+    fn neg(mut self) -> Matrix<T> {
+        let n = T::from_f64(-1.).unwrap();
+        scale(&mut self, n);
+        self
     }
 }
 
@@ -1309,50 +1459,23 @@ pub async fn test_multiplication(hc: f64) {
 
 
 
-//TODO vector transpose into matrix, vector into matrix, matrix 1,n into vector, vector transpose
-
-
-
 mod tests {
     use num::Integer;
     use rand::Rng;
     use std::{ f32::EPSILON as EP, f64::EPSILON, f64::consts::PI };
-    use crate::{core::{lu::lu, matrix::{ Matrix }}, matrix, vector};
+    use crate::{ core::{lu::lu, matrix::{ Matrix }}, matrix, vector };
     use super::{ eq_eps_f64, Vector, P_compact, Number, get_optimal_depth, eq_bound_eps, multiply, mul_blocks, strassen, decompose_blocks };
-
-    /*
-    let rows = 5;
-
-    let columns = 5;
-
-    let max = 100.;
-
-    let mut A: Matrix<f64> = Matrix::rand(rows, columns, max);
-
-    let mut lu = A.lu();
-
-    let R: Matrix<f64> = &lu.L * &lu.U;
-
-    let PL: Matrix<f64> = &lu.P * &lu.L;
-    */
-    
-    
-    
-    //column & row dimensions, U L dimensions
-    //
-
-
 
     
     
     #[test]
     fn solve() {
-        let test = 10;
+        let test = 3;
 
         for i in 1..test {
             println!("\n solve: working with {} \n", i);
 
-            let size = i;
+            let size = 4;
             let max = 10.;
             let A: Matrix<f64> = Matrix::rand(size, size, max);
             let b: Vector<f64> = Vector::rand(size as u32, max);
@@ -1373,6 +1496,8 @@ mod tests {
                     println!("\n Ax is {} \n", Ax);
             
                     println!("\n PAx is {} \n", PAx);
+
+                    println!("\n diff is {} \n", &PAx - &b);
                 }
                 assert!(eq, "entries should be equal");
             }  
@@ -1383,6 +1508,35 @@ mod tests {
 
     fn lu_test10() {
 
+        let test = 2;
+
+        for i in 0..test {
+
+            let max = 1000.;
+        
+            let max_side = 20;
+
+            let mut A: Matrix<f64> = Matrix::rand_shape(max_side, max);
+        
+            println!("\n lu test, iteration {}, A is ({},{}) \n", i, A.rows, A.columns);
+
+            let mut lu = A.lu();
+        
+            let R: Matrix<f64> = &lu.L * &lu.U;
+        
+            let PL: Matrix<f64> = &lu.P * &lu.L;
+
+            let equal = eq_bound_eps(&A, &R);
+
+            if ! equal {
+                println!(
+                    "\n A is ({}, {}) {} \n R is {} \n L is {} \n U is {} \n PL is {} \n diff is {} \n d is {:?} \n P is {} \n", 
+                    A, A.rows, A.columns, R, lu.L, lu.U, PL, &A - &R, lu.d, lu.P
+                );
+            }
+
+            assert!(equal, "\n lu_test10 A should be equal to R \n");
+        }
     }
 
 
@@ -1695,6 +1849,145 @@ mod tests {
         lu_test9();
 
         lu_test10();
+    }
+
+
+
+    #[test]
+    fn rank() {
+        
+        let mut A1 = matrix![f64,
+            5.024026017784438, 2.858902178366669, 296.2138835869165;
+            7.929129970221636, 5.7210492203315795, 523.7802005055211;
+            8.85257084623291, 8.95057121546899, 704.1069012250204;
+        ];
+
+        let A2 = matrix![f64,
+            1.1908477166794595, 8.793086722414468, 194.77132992778556;
+            3.6478484951000456, 4.858421485429982, 187.58571816777294;
+            9.423462238282756, 8.321761784861303, 406.23378670237366;
+        ];
+
+        let lu = A1.lu();
+
+        let R: Matrix<f64> = &lu.L * &lu.U;
+
+        println!("\n d1 is {:?} \n A1 is {} \n R is {} \n L is {} \n U is {} \n diff is {} \n d is {:?} \n P is {} \n \n", lu.d, A1, R, lu.L, lu.U, &A1 - &R, lu.d, lu.P);
+
+        assert_eq!(A1.rank(), 2, "A1 - rank is 2");
+        
+        let lu = A2.lu();
+
+        let R: Matrix<f64> = &lu.L * &lu.U;
+
+        println!("\n d2 is {:?} \n A2 is {} \n R is {} \n L is {} \n U is {} \n diff is {} \n d is {:?} \n P is {} \n \n", lu.d, A2, R, lu.L, lu.U, &A2 - &R, lu.d, lu.P);
+        
+        assert_eq!(A2.rank(), 2, "A2 - rank is 2");
+    }
+
+
+
+    #[test]
+    fn from_basis() {
+
+        let A = matrix![f64,
+            1., 2., 3.;
+            2., 4., 7.;
+            3., 5., 3.;
+        ];
+
+        let b = vec![
+            Vector::new(vec![1., 2., 3.]),
+            Vector::new(vec![2., 4., 5.]),
+            Vector::new(vec![3., 7., 3.])
+        ];
+
+        let R = Matrix::from_basis(b);
+
+        assert_eq!(A, R, "from_basis: matrices should be equal");
+    }
+
+
+
+    #[test]
+    fn into_basis() {
+
+        let A = matrix![f64,
+            1., 2., 3.;
+            2., 4., 7.;
+            3., 5., 3.;
+        ];
+
+        let b = A.into_basis();
+
+        for i in 0..b.len() {
+            let col_i = &b[i];
+            for j in 0..A.rows {
+                assert_eq!(col_i[j], A[[j, i]], "entries should be equal");
+            }
+        }
+    }
+
+
+
+    #[test]
+    fn compose() {
+
+        let A = matrix![f64,
+            1., 2., 3.;
+            2., 4., 7.;
+            3., 5., 3.;
+        ];
+
+        let B = matrix![f64,
+            1., 2., 3.;
+            2., 4., 7.;
+            3., 5., 3.;
+        ];
+
+        let C = matrix![f64,
+            1., 2., 3.;
+            2., 4., 7.;
+            3., 5., 3.;
+        ];
+
+        let product: Matrix<f64> = &(&A * &B) * & C;
+
+        let product2: Matrix<f64> = compose_m!(A,B,C);
+
+        assert_eq!(product, product2, "products should be equivalent");
+    }
+
+
+
+    #[test]
+    fn from_vector() {
+
+        let mut b: Vector<f32> = vector![1., 2., 4., 5.];
+
+        let A : Matrix<f32> = b.into();
+        
+        let s = A.sum();
+
+        assert_eq!(A.columns, 1, "from_vector - single column");
+
+        assert_eq!(A.rows, 4, "from_vector - amount of rows equal to vector elements");
+
+        assert_eq!(s, 12., "from_vector - sum should be 12");
+    }
+
+
+
+    #[test]
+    fn negation() {
+
+        let mut A: Matrix<f32> = Matrix::id(10);
+
+        A = - A;
+        
+        let s = A.sum();
+
+        assert_eq!(s, -10., "negation - sum should be -10");
     }
 
 
@@ -2071,7 +2364,7 @@ mod tests {
 
     #[test]
     fn augment_sq2n() {
-        let iterations = 20;
+        let iterations = 2;
         let max_side = 183;
         let max = 33333.;
 
@@ -2095,7 +2388,7 @@ mod tests {
     #[test]
     fn strassen_test() {
         
-        let max_side = 50;
+        let max_side = 10;
         let max = 10.;
         let a: Matrix<f64> = Matrix::rand_shape(max_side, max);
         let b: Matrix<f64> = Matrix::rand_shape(max_side, max);

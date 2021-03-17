@@ -12,29 +12,27 @@ pub struct lu <T: Number> {
     pub d: Vec<u32>
 }
 
+//TODO 
+//matrix type pre-checks (symmetric, positive definite, etc -> optional equilibration + partial pivoting)
+//TODO
+//equilibration logic should be more sophisticated
+//read https://cs.stanford.edu/people/paulliu/files/cs517-project.pdf
+//i can equilibrate both columns and rows E(LU)Q
+//TODO
+//? bitwise operations for performance
 
+fn equilibrate <T: Number> (U:&mut Matrix<T>) -> (Matrix<T>, Matrix<T>) {
 
-pub fn lu_v2<T: Number>(A: &Matrix<T>) -> lu<T> {
+    let mut E: Matrix<T> = Matrix::id(U.rows);
+
+    let mut Q: Matrix<T> = Matrix::id(U.columns);
+
     let zero = T::from_f64(0.).unwrap();
+
     let one = T::from_f64(1.).unwrap();
-    let steps = min(A.rows, A.columns);
-    let mut E: Matrix<T> = Matrix::id(A.rows);
-    let mut Q: Matrix<T> = Matrix::id(A.columns);
 
-    let mut P: P_compact<T> = P_compact::new(A.rows);
-    let mut U: Matrix<T> = A.clone();
-    let mut L: Matrix<T> = Matrix::new(A.rows, A.rows);
-    let mut d: Vec<u32> = Vec::new();
-    let mut row = 0;
-    let mut col = 0;
 
-    //TODO 
-    //matrix type pre-checks (symmetric, positive definite, etc -> optional equilibration + partial pivoting)
-    //TODO
-    //equilibration logic should be more sophisticated
-    //read https://cs.stanford.edu/people/paulliu/files/cs517-project.pdf
-    //i can equilibrate both columns and rows E(LU)Q
-    
+
     for i in 0..U.rows {
         let thresh: T = T::from_f64((2. as f64).powf(16.)).unwrap();
         let mut l = zero;
@@ -64,13 +62,30 @@ pub fn lu_v2<T: Number>(A: &Matrix<T>) -> lu<T> {
 
         l = T::from_f64(v).unwrap();
 
-        if T::to_f32(&l).unwrap() != 0. {
+        if T::to_f32(&l).unwrap() < f32::EPSILON {
             for j in 0..U.columns {
                 //U[[i,j]] /= l;
             }
             //E[[i,i]] = l;
         }
     }
+
+    (E, Q)
+}
+
+
+
+pub fn lu_v2<T: Number>(A: &Matrix<T>) -> lu<T> {
+
+    let steps = min(A.rows, A.columns);
+    let mut P: P_compact<T> = P_compact::new(A.rows);
+    let mut U: Matrix<T> = A.clone();
+    let mut L: Matrix<T> = Matrix::new(A.rows, A.rows);
+    let mut d: Vec<u32> = Vec::new();
+    let mut row = 0;
+    let mut col = 0;
+
+    let (E, Q) = equilibrate(&mut U);
     
     for i in 0..steps {
         let mut k = row;
@@ -81,13 +96,19 @@ pub fn lu_v2<T: Number>(A: &Matrix<T>) -> lu<T> {
             if c.abs() > p.abs() {
                 p = c;
                 k = j;
-            }    
+            }  
         }
-        
-        if T::to_f32(&p).unwrap() == 0. {
+
+        //println!("evaluate next {} | {}", T::to_f32(&p).unwrap(), f32::EPSILON);
+
+        if T::to_f32(&p).unwrap().abs() < f32::EPSILON {
+
             d.push(i as u32);
+
             col += 1;
+
             continue;
+
         } else {
 
             if k != row {
