@@ -15,16 +15,15 @@ pub struct lu <T: Number> {
 
 
 pub fn lu_v2<T: Number>(A: &Matrix<T>) -> lu<T> {
-    let size = min(A.columns, A.rows);
     let zero = T::from_f64(0.).unwrap();
     let one = T::from_f64(1.).unwrap();
-
+    let steps = min(A.rows, A.columns);
     let mut E: Matrix<T> = Matrix::id(A.rows);
     let mut Q: Matrix<T> = Matrix::id(A.columns);
 
-    let mut P: P_compact<T> = P_compact::new(size);
+    let mut P: P_compact<T> = P_compact::new(A.rows);
     let mut U: Matrix<T> = A.clone();
-    let mut L: Matrix<T> = Matrix::new(size, size);
+    let mut L: Matrix<T> = Matrix::new(A.rows, A.rows);
     let mut d: Vec<u32> = Vec::new();
     let mut row = 0;
     let mut col = 0;
@@ -73,7 +72,7 @@ pub fn lu_v2<T: Number>(A: &Matrix<T>) -> lu<T> {
         }
     }
     
-    for i in 0..U.rows {
+    for i in 0..steps {
         let mut k = row;
         let mut p = U[[row, col]];
         

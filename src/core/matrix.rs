@@ -87,6 +87,7 @@ next x = x - u (shifting x towards better accuracy)
 //upshift_permutation
 //downshift_permutation
 //ones
+//jordan form
 //toeplitz
 //symplectic
 //hamiltonian
@@ -101,7 +102,6 @@ next x = x - u (shifting x towards better accuracy)
 //min
 //max
 //avg
-//trace
 //add
 //subtract
 //mul float
@@ -116,17 +116,14 @@ next x = x - u (shifting x towards better accuracy)
 //lui
 //ref
 //rref
-
+//cofactors
+//det formula
 //is_positive_definite
 //is_invertible
 //is_upshift_permutation
 //is_downshift_permutation
 //is_exchange_permutation
 //is_identity
-//is_upper_triangular
-//is triangular ??? cut half! especially for Ax (where it matters for solution)
-//is_lower_triangular
-//is_diagonal
 //is_banded
 //is_square
 //is_skew_hermitian
@@ -464,10 +461,10 @@ impl <T: Number> Matrix<T> {
 
 
 
-    pub fn init_const(A: &mut Matrix<T>, c: f64) {
-        for i in 0..A.columns {
-            for j in 0..A.rows {
-                A[[j,i]] = T::from_f64(c).unwrap();
+    pub fn init_const(&mut self, c: T) {
+        for i in 0..self.columns {
+            for j in 0..self.rows {
+                self[[j,i]] = c;
             }
         }
     }
@@ -573,6 +570,19 @@ impl <T: Number> Matrix<T> {
 
 
 
+    pub fn set_diag(&mut self, v:Vector<T>) {
+
+        let c = min(self.rows, self.columns);
+
+        assert_eq!(v.data.len(), c, "set_diag - incorrect size");
+
+        for i in 0..c {
+            self[[i, i]] = v[i];
+        }
+    }
+    
+    
+
     pub fn sum(&self) -> T {
 
         let mut acc = identities::zero();
@@ -582,6 +592,12 @@ impl <T: Number> Matrix<T> {
         }
         
         acc
+    }
+
+
+
+    pub fn trace() {
+
     }
 
 
@@ -602,21 +618,6 @@ impl <T: Number> Matrix<T> {
 
 
 
-    pub fn is_diagonally_dominant(&self) -> bool {
-
-        if self.rows != self.columns {
-            return false;
-        }
-
-        /*
-        a square matrix is said to be diagonally dominant if, for every row of the matrix, 
-        the magnitude of the diagonal entry in a row is larger than or equal to the sum of the magnitudes of all the other (non-diagonal) entries in that row
-        */
-        false
-    } 
-
-
-
     pub fn is_symmetric_positive_definite() {
 
     }
@@ -625,6 +626,39 @@ impl <T: Number> Matrix<T> {
 
     pub fn is_positive_definite() {
 
+    }
+
+
+
+    pub fn is_diagonally_dominant(&self) -> bool {
+
+        if self.rows != self.columns {
+           return false;
+        }
+
+        let zero = T::from_f64(0.).unwrap();
+
+        for i in 0..self.rows {
+
+            let mut acc = zero;
+
+            let mut p = zero;
+
+            for j in 0..self.columns {
+            
+                if i == j {
+                   p = self[[i, j]];
+                } else {
+                   acc += self[[i, j]];
+                }
+            }
+
+            if p.abs() < acc.abs() {
+                return false;
+            }
+        }
+        
+        true
     }
 
 
@@ -673,10 +707,20 @@ impl <T: Number> Matrix<T> {
 
 
 
+    pub fn is_square(&self) -> bool {
+        self.columns == self.rows
+    }
+
+
+
     pub fn is_upper_triangular(&self) -> bool {
         
-        let zero = T::from_f64(0.).unwrap();
+        if !self.is_square() {
+            return false;
+        }
 
+        let zero = T::from_f64(0.).unwrap();
+        
         for i in 0..self.rows {
 
             for j in 0..i {
@@ -684,7 +728,6 @@ impl <T: Number> Matrix<T> {
                 if self[[i, j]] != zero {
 
                    return false;
-
                 }
             }
         }
@@ -696,9 +739,13 @@ impl <T: Number> Matrix<T> {
 
     pub fn is_lower_triangular(&self) -> bool {
 
-        let zero = T::from_f64(0.).unwrap();
+        if !self.is_square() {
+            return false;
+        }
 
-        for i in 0..(self.rows - 1) {
+        let zero = T::from_f64(0.).unwrap();
+        
+        for i in 0..self.rows {
 
             for j in (i + 1)..self.columns {
 
@@ -1012,6 +1059,29 @@ impl <T: Number> Sub for Matrix<T> {
 
 
 
+impl <T: Number> Mul <T> for &Matrix<T> {
+    type Output = Matrix<T>;
+
+    fn mul(mut self, s:T) -> Matrix<T> {
+        let mut A = self.clone();
+        scale(&mut A, s);
+        A
+    }
+}
+
+
+
+impl <T: Number> Mul <T> for Matrix<T> {
+    type Output = Matrix<T>;
+
+    fn mul(mut self, s:T) -> Matrix<T> {
+        scale(&mut self, s);
+        self
+    }
+}
+
+
+
 impl <T: Number> Mul <&Vector<T>> for &Matrix<T> 
     where T: Number 
 {
@@ -1210,8 +1280,8 @@ pub async fn test_multiplication(hc: f64) {
             log(&format!("\n naive {} \n", end - start));
         }
 
-        let mut r3 = Matrix::new(A.rows, B.columns);
-        Matrix::init_const(&mut r3, 0.);
+        let mut r3: Matrix<f64> = Matrix::new(A.rows, B.columns);
+
         let r: Matrix<f64> = add(&r, &r3, false);
         
         if !(r == r2) {
@@ -1239,19 +1309,18 @@ pub async fn test_multiplication(hc: f64) {
 
 
 
-
 //TODO vector transpose into matrix, vector into matrix, matrix 1,n into vector, vector transpose
 
+
+
 mod tests {
+    use num::Integer;
     use rand::Rng;
     use std::{ f32::EPSILON as EP, f64::EPSILON, f64::consts::PI };
-    use crate::{ vector, core::matrix::{ Matrix }, matrix };
+    use crate::{core::{lu::lu, matrix::{ Matrix }}, matrix, vector};
     use super::{ eq_eps_f64, Vector, P_compact, Number, get_optimal_depth, eq_bound_eps, multiply, mul_blocks, strassen, decompose_blocks };
 
     /*
-    
-    
-    
     let rows = 5;
 
     let columns = 5;
@@ -1267,140 +1336,17 @@ mod tests {
     let PL: Matrix<f64> = &lu.P * &lu.L;
     */
     
-    //rows > columns
-    //columns > rows
-    //zero pivots initially
-    //edge cases - [1] [1,2,3] [1,2,3]T [0,0,0], all ones etc
-
-
-
-    fn lu_test4() {
-
-        //solve with free variables
-        let mut A: Matrix<f64> = matrix![f64,
-            1., 2., 1., 1., 1.;
-            1., 2.5, 2., 2., 12.;
-            1., 2.9, 3., 1., 7.;
-            1., 4., 4., 2., 3.; 
-        ];
-
-        let mut lu = A.lu();
-
-        let R: Matrix<f64> = &lu.L * &lu.U;
-
-        let PL: Matrix<f64> = &lu.P * &lu.L;
-
-        println!("\n A is {} \n R is {} \n L is {} \n U is {} \n PL is {} \n diff is {} \n d is {:?} \n P is {} \n", A, R, lu.L, lu.U, PL, &A - &R, lu.d, lu.P);
-        
-        assert!(false);
-
-    }
-
-
-
-    fn lu_test3() {
-        /*
-        let mut A: Matrix<f32> = matrix![f32,
-            1.3968362, -0.97569525, -5.018955, 0.7136311;
-            -4.6254315, 9.305554, 2.5439813, 1.9787005;
-            -3.233496, -4.881222, -3.2327516, 3.0223584;
-            -1.1067164, -4.347563, -8.04766, 1.6895233;
-        ];
-        */
-        let mut A: Matrix<f64> = matrix![f64,
-            1.3968362, -0.0009525, -5.018955, 23352352350.7136311; //-0.00009525 TODO
-            -4.6254315, 9.305554, 2.5439813, 1234234234.9787005;
-            -3.233496, -4.881222, -3.2327516, 3534534534.0223584;
-            -1.1067164, -445645645645.347563, -8.04766, 1634634634.6895233;
-        ];
     
-        let mut lu = A.lu();
-        
-        let R: Matrix<f64> = &lu.L * &lu.U;
-
-        let PL: Matrix<f64> = &lu.P * &lu.L;
-
-        let id: Matrix<f64> = Matrix::id(lu.P.rows);
-
-        println!("\n A is {} \n R is {} \n L is {} \n U is {} \n PL is {} \n diff is {} \n d is {:?} \n P is {} \n", A, R, lu.L, lu.U, PL, &A - &R, lu.d, lu.P);
-        
-        assert!(eq_bound_eps(&A, &R), "\n lu_test3 A should be equal to R \n");
-    }
-
-
-
-    fn lu_test2() {
-
-        let mut A: Matrix<f64> = matrix![f64,
-            1., 2., 1., 1.;
-            1., 2., 2., 2.;
-            1., 2., 3., 1.;
-            1., 2., 4., 2.;
-        ];
-        
-        let mut lu = A.lu();
-        
-        let R: Matrix<f64> = &lu.L * &lu.U;
-
-        let PL: Matrix<f64> = &lu.P * &lu.L;
-
-        let id: Matrix<f64> = Matrix::id(lu.P.rows);
-
-        println!("\n A is {} \n R is {} \n L is {} \n U is {} \n PL is {} \n diff is {} \n d is {:?} \n P is {} \n", A, R, lu.L, lu.U, PL, &A - &R, lu.d, lu.P);
-        
-        assert!(eq_bound_eps(&A, &R), "\n lu_test2 A should be equal to R \n");
-
-        assert_eq!(lu.d.len(), 1, "\n lu_test2 d should contain 1 element \n");
-
-        assert_eq!(lu.d[0], 1, "\n lu_test2 d should contain second col \n");
-        
-        assert!(id != lu.P, "\n lu_test2 P should not be identity \n");
-    }
-
-
-
-    fn lu_test1() {
-
-        let mut A: Matrix<f64> = matrix![f64,
-            1., 2., 3.;
-            2., 4., 7.;
-            3., 5., 3.;
-        ];
-        
-        let mut lu = A.lu();
-        
-        let R: Matrix<f64> = &lu.L * &lu.U;
-
-        let PL: Matrix<f64> = &lu.P * &lu.L;
-
-        let id: Matrix<f64> = Matrix::id(lu.P.rows);
-
-        println!("\n A is {} \n R is {} \n L is {} \n U is {} \n PL is {} \n diff is {} \n d is {:?} \n P is {} \n", A, R, lu.L, lu.U, PL, &A - &R, lu.d, lu.P);
-        
-        assert_eq!(A, R, "\n lu_test1 A should be equal to R \n");
-
-        assert!(id != lu.P, "\n lu_test1 P should not be identity \n");
-    }
     
+    //column & row dimensions, U L dimensions
+    //
 
 
+
+    
+    
     #[test]
-    fn lu_test() {
-        
-        //lu_test1();
-
-        //lu_test2();
-
-        //lu_test3();
-
-        lu_test4();
-    }
-
-
-
-    //#[test]
-    fn solve_test() {
-            
+    fn solve() {
         let test = 10;
 
         for i in 1..test {
@@ -1431,6 +1377,324 @@ mod tests {
                 assert!(eq, "entries should be equal");
             }  
         }
+    }
+
+
+
+    fn lu_test10() {
+
+    }
+
+
+
+    fn lu_test9() {
+        
+        let mut A: Matrix<f64> = Matrix::new(10, 10);
+
+        let mut lu = A.lu();
+
+        let R: Matrix<f64> = &lu.L * &lu.U;
+
+        let PL: Matrix<f64> = &lu.P * &lu.L;
+
+        assert!(lu.U.is_upper_triangular(), "\n lu_test9 U should be upper triangular \n");
+
+        assert!(PL.is_lower_triangular(), "\n lu_test9 PL should be lower triangular \n");
+
+        assert!(eq_bound_eps(&A, &R), "\n lu_test9 A should be equal to R \n");
+
+        confirm_lu_dimensions(&A, &lu);
+    }
+
+
+
+    fn lu_test8() {
+        
+        let mut A: Matrix<f64> = matrix![f64,
+            1.;
+            2.;
+            3.;
+        ];
+
+        let mut lu = A.lu();
+
+        let R: Matrix<f64> = &lu.L * &lu.U;
+
+        let PL: Matrix<f64> = &lu.P * &lu.L;
+        
+        assert!(eq_bound_eps(&A, &R), "\n lu_test8 A should be equal to R \n");
+        
+        A = A.transpose();
+
+        let mut lu = A.lu();
+
+        let R: Matrix<f64> = &lu.L * &lu.U;
+
+        let PL: Matrix<f64> = &lu.P * &lu.L;
+        
+        assert!(eq_bound_eps(&A, &R), "\n lu_test8 A transpose should be equal to R \n");
+
+        confirm_lu_dimensions(&A, &lu);
+    }
+
+
+
+    fn lu_test7() {
+        
+        let mut A: Matrix<f64> = matrix![f64,
+            1.;
+        ];
+
+        let mut lu = A.lu();
+
+        let R: Matrix<f64> = &lu.L * &lu.U;
+
+        let PL: Matrix<f64> = &lu.P * &lu.L;
+
+        println!("\n A is {} \n R is {} \n L is {} \n U is {} \n PL is {} \n diff is {} \n d is {:?} \n P is {} \n", A, R, lu.L, lu.U, PL, &A - &R, lu.d, lu.P);
+        
+        assert!(lu.U.is_upper_triangular(), "\n lu_test7 U should be upper triangular \n");
+
+        assert!(PL.is_lower_triangular(), "\n lu_test7 PL should be lower triangular \n");
+
+        assert!(eq_bound_eps(&A, &R), "\n lu_test7 A should be equal to R \n");
+
+        confirm_lu_dimensions(&A, &lu);
+    }
+
+
+
+    fn lu_test6() {
+        
+        let mut A: Matrix<f64> = matrix![f64,
+            1., 2.,  1.;
+            1., 2.5, 2.;
+            1., 2.9, 3.;
+        ];
+        
+        let v = vector![0., 0., 0.];
+
+        A.set_diag(v);
+
+        let mut lu = A.lu();
+
+        let R: Matrix<f64> = &lu.L * &lu.U;
+
+        let PL: Matrix<f64> = &lu.P * &lu.L;
+
+        println!("\n A is {} \n R is {} \n L is {} \n U is {} \n PL is {} \n diff is {} \n d is {:?} \n P is {} \n", A, R, lu.L, lu.U, PL, &A - &R, lu.d, lu.P);
+        
+        assert!(lu.U.is_upper_triangular(), "\n lu_test6 U should be upper triangular \n");
+
+        assert!(PL.is_lower_triangular(), "\n lu_test6 PL should be lower triangular \n");
+
+        assert!(eq_bound_eps(&A, &R), "\n lu_test6 A should be equal to R \n");
+
+        confirm_lu_dimensions(&A, &lu);
+    }
+
+
+    
+    fn lu_test5() {
+
+        let mut A: Matrix<f64> = matrix![f64,
+            1., 2.,  1.;
+            1., 2.5, 2.;
+            1., 2.9, 3.;
+            1., 4.,  4.; 
+        ];
+
+        let mut lu = A.lu();
+
+        let R: Matrix<f64> = &lu.L * &lu.U;
+
+        let PL: Matrix<f64> = &lu.P * &lu.L;
+
+        println!("\n A is {} \n R is {} \n L is {} \n U is {} \n PL is {} \n diff is {} \n d is {:?} \n P is {} \n", A, R, lu.L, lu.U, PL, &A - &R, lu.d, lu.P);
+        
+        //assert!(lu.U.is_upper_triangular(), "\n lu_test5 U should be upper triangular \n");
+
+        assert!(PL.is_lower_triangular(), "\n lu_test5 PL should be lower triangular \n");
+
+        assert!(eq_bound_eps(&A, &R), "\n lu_test5 A should be equal to R \n");
+
+        confirm_lu_dimensions(&A, &lu);
+    }
+
+
+    
+    fn lu_test4() {
+
+        //TODO solve with free variables
+        let mut A: Matrix<f64> = matrix![f64,
+            1., 2., 1., 1., 1.;
+            1., 2.5, 2., 2., 12.;
+            1., 2.9, 3., 1., 7.;
+            1., 4., 4., 2., 3.; 
+        ];
+
+        let mut lu = A.lu();
+
+        let R: Matrix<f64> = &lu.L * &lu.U;
+
+        let PL: Matrix<f64> = &lu.P * &lu.L;
+
+        println!("\n A is {} \n R is {} \n L is {} \n U is {} \n PL is {} \n diff is {} \n d is {:?} \n P is {} \n", A, R, lu.L, lu.U, PL, &A - &R, lu.d, lu.P);
+        
+        //assert!(lu.U.is_upper_triangular(), "\n lu_test4 U should be upper triangular \n");
+
+        assert!(PL.is_lower_triangular(), "\n lu_test4 PL should be lower triangular \n");
+
+        assert!(eq_bound_eps(&A, &R), "\n lu_test4 A should be equal to R \n");
+
+        confirm_lu_dimensions(&A, &lu);
+    }
+
+
+
+    fn lu_test3() {
+        /*
+        let mut A: Matrix<f32> = matrix![f32,
+            1.3968362, -0.97569525, -5.018955, 0.7136311;
+            -4.6254315, 9.305554, 2.5439813, 1.9787005;
+            -3.233496, -4.881222, -3.2327516, 3.0223584;
+            -1.1067164, -4.347563, -8.04766, 1.6895233;
+        ];
+        */
+        let mut A: Matrix<f64> = matrix![f64,
+            1.3968362, -0.0009525, -5.018955, 23352352350.7136311; //-0.00009525 TODO
+            -4.6254315, 9.305554, 2.5439813, 1234234234.9787005;
+            -3.233496, -4.881222, -3.2327516, 3534534534.0223584;
+            -1.1067164, -445645645645.347563, -8.04766, 1634634634.6895233;
+        ];
+    
+        let mut lu = A.lu();
+        
+        let R: Matrix<f64> = &lu.L * &lu.U;
+
+        let PL: Matrix<f64> = &lu.P * &lu.L;
+
+        let id: Matrix<f64> = Matrix::id(lu.P.rows);
+
+        println!("\n A is {} \n R is {} \n L is {} \n U is {} \n PL is {} \n diff is {} \n d is {:?} \n P is {} \n", A, R, lu.L, lu.U, PL, &A - &R, lu.d, lu.P);
+        
+        assert!(lu.U.is_upper_triangular(), "\n lu_test3 U should be upper triangular \n");
+
+        assert!(PL.is_lower_triangular(), "\n lu_test3 PL should be lower triangular \n");
+        
+        assert!(eq_bound_eps(&A, &R), "\n lu_test3 A should be equal to R \n");
+
+        confirm_lu_dimensions(&A, &lu);
+    }
+
+
+
+    fn lu_test2() {
+
+        let mut A: Matrix<f64> = matrix![f64,
+            1., 2., 1., 1.;
+            1., 2., 2., 2.;
+            1., 2., 3., 1.;
+            1., 2., 4., 2.;
+        ];
+        
+        let mut lu = A.lu();
+        
+        let R: Matrix<f64> = &lu.L * &lu.U;
+
+        let PL: Matrix<f64> = &lu.P * &lu.L;
+
+        let id: Matrix<f64> = Matrix::id(lu.P.rows);
+
+        println!("\n A is {} \n R is {} \n L is {} \n U is {} \n PL is {} \n diff is {} \n d is {:?} \n P is {} \n", A, R, lu.L, lu.U, PL, &A - &R, lu.d, lu.P);
+        
+        assert!(lu.U.is_upper_triangular(), "\n lu_test2 U should be upper triangular \n");
+
+        assert!(PL.is_lower_triangular(), "\n lu_test2 PL should be lower triangular \n");
+
+        assert!(eq_bound_eps(&A, &R), "\n lu_test2 A should be equal to R \n");
+
+        assert_eq!(lu.d.len(), 1, "\n lu_test2 d should contain 1 element \n");
+
+        assert_eq!(lu.d[0], 1, "\n lu_test2 d should contain second col \n");
+        
+        assert!(id != lu.P, "\n lu_test2 P should not be identity \n");
+
+        confirm_lu_dimensions(&A, &lu);
+    }
+
+
+
+    fn lu_test1() {
+
+        let mut A: Matrix<f64> = matrix![f64,
+            1., 2., 3.;
+            2., 4., 7.;
+            3., 5., 3.;
+        ];
+        
+        let mut lu = A.lu();
+        
+        let R: Matrix<f64> = &lu.L * &lu.U;
+
+        let PL: Matrix<f64> = &lu.P * &lu.L;
+
+        let id: Matrix<f64> = Matrix::id(lu.P.rows);
+
+        println!("\n A is {} \n R is {} \n L is {} \n U is {} \n PL is {} \n diff is {} \n d is {:?} \n P is {} \n", A, R, lu.L, lu.U, PL, &A - &R, lu.d, lu.P);
+        
+        assert!(lu.U.is_upper_triangular(), "\n lu_test1 U should be upper triangular \n");
+
+        assert!(PL.is_lower_triangular(), "\n lu_test1 PL should be lower triangular \n");
+
+        assert_eq!(A, R, "\n lu_test1 A should be equal to R \n");
+
+        assert!(id != lu.P, "\n lu_test1 P should not be identity \n");
+
+        confirm_lu_dimensions(&A, &lu);
+    }
+    
+
+
+    fn confirm_lu_dimensions<T:Number>(A: &Matrix<T>, v: &lu<T>) {
+        
+        assert!(v.L.is_square(), "\n confirm_lu_dimensions L should be square \n");
+        assert!(v.P.is_square(), "\n confirm_lu_dimensions P should be square \n");
+
+        assert!(v.L.rows == A.rows, "\n L rows == A rows \n");
+        assert!(v.L.columns == A.rows, "\n L columns == A rows \n");
+
+        assert!(v.P.rows == A.rows, "\n P rows == A rows \n");
+        assert!(v.P.columns == A.rows, "\n P columns == A rows \n");
+
+        assert!(v.U.rows == A.rows, "\n L rows == A rows \n");
+        assert!(v.U.columns == A.columns, "\n L columns == A rows \n");
+    }
+
+
+
+    #[test]
+    fn lu_test() {
+        
+        lu_test1();
+
+        lu_test2();
+
+        lu_test3();
+
+        lu_test4();
+
+        lu_test5();
+
+        lu_test6();
+
+        lu_test7();
+
+        lu_test8();
+
+        lu_test9();
+
+        lu_test10();
     }
 
 
@@ -1479,7 +1743,7 @@ mod tests {
 
 
     #[test] 
-    fn perm_test() {
+    fn permutation_test() {
         let p = Matrix::<f32>::generate_permutations(4);
 
         for i in 0..p.len() {
@@ -1489,7 +1753,7 @@ mod tests {
         //assert!(false);
     }
     
-    
+
 
     #[test]
     fn exchange_rows() {
@@ -1525,16 +1789,6 @@ mod tests {
     }
 
 
-    
-    #[test]
-    fn id_test() {
-
-        let id: Matrix<f64> = Matrix::id(5);
-        
-        assert!(id.is_diag(), "\n ID should be diagonal {} \n \n", id);
-    }
-    
-
 
     #[test]
     fn transpose() {
@@ -1561,6 +1815,161 @@ mod tests {
 
         //TODO transpose orthonormal basis, inverse
         
+    }
+
+
+
+    #[test]
+    fn identity() {
+
+        let id: Matrix<f64> = Matrix::id(5);
+        
+        assert!(id.is_diag(), "\n ID should be diagonal {} \n \n", id);
+    }
+    
+
+
+    #[test]
+    fn is_identity() {
+        
+        let mut A: Matrix<i32> = Matrix::id(1);
+        
+        assert_eq!(A.is_identity(), true, "is_identity - 1x1 id");
+
+        A[[0, 0]] = 0;
+
+        assert_eq!(A.is_identity(), false, "is_identity - 1x1 id");
+
+        let mut A: Matrix<i32> = Matrix::id(10);
+
+        assert_eq!(A.is_identity(), true, "is_identity - 10x10 id");
+
+        A[[1, 1]] = 0;
+
+        assert_eq!(A.is_identity(), false, "is_identity - 10x10 not id");
+
+        A[[1, 1]] = 1;
+        A[[1, 0]] = 1;
+
+        assert_eq!(A.is_identity(), false, "is_identity - 10x10 not id");
+    }
+
+
+
+    #[test]
+    fn is_diagonally_dominant() {
+
+        let mut A: Matrix<i32> = Matrix::id(10);
+        let mut N: Matrix<i32> = Matrix::id(10);
+
+        assert_eq!(A.is_diagonally_dominant(), true, "is_diagonally_dominant - identity is diagonally dominant");
+        
+        A = A * 10;
+        N = N * -2;
+        
+        let mut C: Matrix<i32> = Matrix::new(10, 10);
+
+        C.init_const(1);
+
+        A = A + N;
+        A = A + C;
+        
+        assert_eq!(A.is_diagonally_dominant(), true, "is_diagonally_dominant - after transformation");
+
+        A[[0, 1]] += 1;
+
+        assert_eq!(A.is_diagonally_dominant(), false, "is_diagonally_dominant - no more");
+    }
+
+
+
+    #[test]
+    fn is_diag() {
+
+        let mut A: Matrix<i32> = Matrix::id(10);
+
+        assert_eq!(A.is_diag(), true, "is_diag - identity is diagonal");
+        
+        A[[0, 9]] = 1;
+
+        assert_eq!(A.is_diag(), false, "is_diag - A[[0, 9]] = 1, A no longer diagonal");
+
+        A[[0, 9]] = 0;
+        A[[5, 6]] = 1;
+
+        assert_eq!(A.is_diag(), false, "is_diag - A[[5, 6]] = 1, A no longer diagonal");
+
+        A[[5, 6]] = 0;
+
+        assert_eq!(A.is_diag(), true, "is_diag - A is diagonal");
+    }
+
+
+
+    #[test]
+    fn is_upper_triangular() {
+
+        let mut id: Matrix<f64> = Matrix::id(10);
+
+        assert_eq!(id.is_upper_triangular(), true, "is_upper_triangular - identity is upper triangular");
+        
+        id[[5, 6]] = 1.;
+
+        assert_eq!(id.is_upper_triangular(), true, "is_upper_triangular - id[[6, 5]] = 1., identity is still upper triangular");
+
+        id[[0, 9]] = 1.;
+        
+        assert_eq!(id.is_upper_triangular(), true, "is_upper_triangular - id[[9, 0]] = 1., identity is still upper triangular");
+
+        id[[9, 0]] = 1.;
+
+        assert_eq!(id.is_upper_triangular(), false, "is_upper_triangular - id[[0, 9]] = 1., identity is no longer upper triangular");
+    }
+
+
+
+    #[test]
+    fn is_lower_triangular() {
+
+        let mut id: Matrix<f64> = Matrix::id(10);
+
+        assert_eq!(id.is_lower_triangular(), true, "is_lower_triangular - identity is lower triangular");
+
+        id[[6, 5]] = 1.;
+
+        assert_eq!(id.is_lower_triangular(), true, "is_lower_triangular - id[[6, 5]] = 1., identity is still lower triangular");
+
+        id[[9, 0]] = 1.;
+        
+        assert_eq!(id.is_lower_triangular(), true, "is_lower_triangular - id[[9, 0]] = 1., identity is still lower triangular");
+
+        id[[0, 9]] = 1.;
+
+        assert_eq!(id.is_lower_triangular(), false, "is_lower_triangular - id[[0, 9]] = 1., identity is no longer lower triangular");
+    }
+
+
+
+    #[test]
+    fn is_permutation() {
+
+        let mut id: Matrix<f64> = Matrix::id(10);
+
+        assert_eq!(id.is_permutation(), true, "is_permutation - identity is permutation");
+
+        id.exchange_rows(1, 5);
+        id.exchange_rows(2, 7);
+        id.exchange_rows(0, 9);
+
+        assert_eq!(id.is_permutation(), true, "is_permutation - identity is permutation after transform");
+
+        id.exchange_columns(0, 9);
+
+        assert_eq!(id.is_permutation(), true, "is_permutation - identity is permutation after col exchange");
+
+        id[[5, 6]] = 0.1;
+
+        assert_eq!(id.is_permutation(), false, "is_permutation - identity is no longer permutation after augmentation");
     }
 
 
@@ -1661,7 +2070,7 @@ mod tests {
 
 
     #[test]
-    fn augment_sq2n_test() {
+    fn augment_sq2n() {
         let iterations = 20;
         let max_side = 183;
         let max = 33333.;
@@ -1683,7 +2092,7 @@ mod tests {
 
 
 
-    //#[test]
+    #[test]
     fn strassen_test() {
         
         let max_side = 50;
