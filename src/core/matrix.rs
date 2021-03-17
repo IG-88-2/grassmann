@@ -32,8 +32,8 @@ use rand::prelude::*;
 use rand::Rng;
 use num_traits::{Float, Num, NumAssignOps, NumOps, PrimInt, Signed, cast, identities};
 use web_sys::Event;
-use crate::{Number, workers::Workers};
-use super::{lu::{lu, lu_v2}, matrix3::Matrix3, matrix4::Matrix4, multiply::{ multiply_threads, strassen, mul_blocks, get_optimal_depth, decompose_blocks }};
+use crate::{Number, vector, workers::Workers};
+use super::{lu::{lu, lu_v2}, matrix3::Matrix3, matrix4::Matrix4, multiply::{ multiply_threads, strassen, mul_blocks, get_optimal_depth, decompose_blocks }, utils::eq_eps_f64, vector::Vector};
 
 /*
 TODO 
@@ -49,7 +49,6 @@ spread available work through workers, establish queue
 //mul matrix vector
 //rref
 //lu
-//solve
 //det
 //eig
 //compose
@@ -59,7 +58,6 @@ spread available work through workers, establish queue
 /*
 use Newton method
 b known
-solve -> Ax = b
 compute Ax - using obtained x
 compute difference d = Ax - b
 transform this difference into vector in column space using:
@@ -85,7 +83,6 @@ next x = x - u (shifting x towards better accuracy)
 //perspective
 //rotation
 //reflection
-//zeros
 //permutation
 //upshift_permutation
 //downshift_permutation
@@ -114,7 +111,6 @@ next x = x - u (shifting x towards better accuracy)
 //pow
 //kronecker
 //inv (pseudo, left, right)
-//solve
 //distance between two subspaces
 //dist
 //lui
@@ -257,44 +253,58 @@ impl <T: Number> Matrix<T> {
 
 
 
-    fn solve(&self) {
-        //TODO keep track of number of rows interchanges (det sign)
-        //TODO is singular ? (kth stage - sum remaining column entries - remainder is 0 - singularity)
-        //TODO det product of U diag
-        //TODO rows > columns
-        //TODO columns > rows
-        //TODO perform matrix type pre-checks (symmetric, positive definite, etc) (optional equilibration + partial pivoting)
-
-        //is it possible to rearrange L to act on proper rows ?
+    pub fn lu (&self) -> lu<T> {
+        lu_v2(self)
     }
 
 
 
-    fn lu_eq() {
-        /*
-        for i in 0..U.rows {
-            let mut m = zero; 
-            for j in 0..U.columns {
-                let c = U[[i,j]];
-                if c.abs() > m.abs() {
-                    m = U[[i,j]];
+    fn solve(&self, b: &Vector<T>, lu: &lu<T>) -> Vector<T> {
+        let zero = T::from_f64(0.).unwrap();
+        let Pb: Vector<T> = &lu.P * b;
+        let PL: Matrix<T> = &lu.P * &lu.L;
+        let mut y = Vector::new(vec![zero; PL.columns]);
+        let mut x = Vector::new(vec![zero; lu.U.columns]);
+
+        //TODO
+        if !lu.d.is_empty() {
+            return x;
+        }
+        
+        for i in 0..PL.rows {
+            let mut acc = b[i];
+
+            for j in 0..(i + 1) {
+                let c = PL[[i, j]];
+                
+                if j == i {
+                    y[i] = acc / c;
+                } else {
+                    acc -= c * y[j];
                 }
-            }
-            if m != zero {
-                E[[i, i]] = one / m; //better ??? row sum ??? row min ???
             }
         }
         
-        U = &E * &U;
+        for i in (0..lu.U.rows).rev() {
+            let mut acc = y[i];
 
-        for i in 0..E.rows {
-            E[[i,i]] = one / E[[i,i]];
+            for j in (i..lu.U.rows).rev() {
+                let c = lu.U[[i, j]];
+                
+                if j == i {
+                    x[i] = acc / c;
+                } else {
+                    acc -= c * x[j];
+                }
+            }
         }
-        */
+        
+        x
     }
 
 
 
+    //TODO improve, assert n!
     fn generate_permutations(size: usize) -> Vec<Matrix<f32>> {
         let m: Matrix<f32> = Matrix::id(size);
         let mut list: Vec<Matrix<f32>> = Vec::new();
@@ -319,13 +329,20 @@ impl <T: Number> Matrix<T> {
 
         list
     }
+
     
 
     
-    pub fn lu (A: &Matrix<T>) -> lu<T> {
-        lu_v2(A)
-    }
     
+    
+
+
+    pub fn inv(&self) -> Matrix<T> {
+        //if matrix diagonal 1/e
+        self.clone()
+
+    }
+
 
 
     pub fn into_sab(&mut self) -> SharedArrayBuffer {
@@ -600,7 +617,6 @@ impl <T: Number> Matrix<T> {
 
 
 
-    //???
     pub fn is_symmetric_positive_definite() {
 
     }
@@ -609,6 +625,31 @@ impl <T: Number> Matrix<T> {
 
     pub fn is_positive_definite() {
 
+    }
+
+
+
+    pub fn is_identity(&self) -> bool {
+
+        let zero = T::from_f64(0.).unwrap();
+        
+        let one = T::from_f64(1.).unwrap();
+
+        for i in 0..self.rows {
+            for j in 0..self.columns {
+                if i == j {
+                    if self[[i, j]] != one {
+                        return false;
+                    }
+                } else {
+                    if self[[i, j]] != zero {
+                        return false;
+                    }
+                }
+            }
+        }
+
+        true
     }
 
 
@@ -632,20 +673,57 @@ impl <T: Number> Matrix<T> {
 
 
 
-    pub fn is_upper_triangular() {
+    pub fn is_upper_triangular(&self) -> bool {
+        
+        let zero = T::from_f64(0.).unwrap();
 
+        for i in 0..self.rows {
+
+            for j in 0..i {
+
+                if self[[i, j]] != zero {
+
+                   return false;
+
+                }
+            }
+        }
+
+        true
     }
 
 
 
-    pub fn is_lower_triangular() {
+    pub fn is_lower_triangular(&self) -> bool {
 
+        let zero = T::from_f64(0.).unwrap();
+
+        for i in 0..(self.rows - 1) {
+
+            for j in (i + 1)..self.columns {
+
+                if self[[i, j]] != zero {
+
+                    return false;
+
+                }
+            }
+        }
+
+        true
     }
 
 
 
-    pub fn is_permutation() {
+    pub fn is_permutation(&self) -> bool {
+        
+        let one = T::from_i32(1).unwrap();
+        
+        let t = Vector::new(vec![one; self.columns]);
+        
+        let r = self * &t;
 
+        r == t
     }
 
 
@@ -672,11 +750,6 @@ impl <T: Number> Matrix<T> {
 
         true
     }
-
-    pub fn with_col_rank(r: u32) {}
-
-    pub fn with_row_rank(r: u32) {} 
-
 }
 
 
@@ -796,32 +869,59 @@ fn mul <T:Number>(
 
 
 
+pub fn mul_v <T:Number>(A: &Matrix<T>, b: &Vector<T>) -> Vector<T> {
+
+    assert_eq!(A.columns, b.data.len(), "matrix and vector dim incompatible A columns {} b len {}", A.columns, b.data.len());
+    let z = T::from_f64(0.).unwrap();
+    let d = vec![z; A.rows];
+    let mut out = Vector::new(d);
+
+    for i in 0..A.rows {
+        for j in 0..A.columns {
+            out[i] += A[[i, j]] * b[j];
+        }
+    }
+
+    out
+}
+
+
+
+/*
+TODO
+mul_diag
+
+if A.is_diag() {
+        
+    let mut C = B.clone();
+    //TODO test
+    for i in 0..B.rows {
+        for j in 0..B.columns {
+            C[[i, j]] *= A[[i, i]];        
+        }
+    }
+
+    C
+} else {
+
+    mul(A, B, A.rows, A.columns, B.columns)
+}
+*/
+
+
+
 pub fn multiply <T:Number>(A: &Matrix<T>, B: &Matrix<T>) -> Matrix<T> {
 
     assert_eq!(A.columns, B.rows, "matrices dimensions should be compatible A columns {} B rows {}", A.columns, B.rows);
-
-    if A.is_diag() {
-        
-        let mut C = B.clone();
-        //TODO test
-        for i in 0..B.rows {
-            for j in 0..B.columns {
-                C[[i, j]] *= A[[i, i]];        
-            }
-        }
-
-        C
-    } else {
     
-        mul(A, B, A.rows, A.columns, B.columns)
-    }
+    mul(A, B, A.rows, A.columns, B.columns)
 }
 
 
 
 impl <T:Number> PartialEq for Matrix<T> {
     fn eq(&self, b: &Matrix<T>) -> bool {
-        eq(self, b) //eq_f64(self, b)
+        eq(self, b)
     }
 }
 
@@ -912,6 +1012,30 @@ impl <T: Number> Sub for Matrix<T> {
 
 
 
+impl <T: Number> Mul <&Vector<T>> for &Matrix<T> 
+    where T: Number 
+{
+    type Output = Vector<T>;
+
+    fn mul(mut self, b: &Vector<T>) -> Vector<T> {
+        mul_v(self, b)
+    }
+}
+
+
+
+impl <T: Number> Mul <Vector<T>> for Matrix<T> 
+    where T: Number 
+{
+    type Output = Vector<T>;
+
+    fn mul(mut self, b: Vector<T>) -> Vector<T> {
+        mul_v(&self, &b)
+    }
+}
+
+
+
 impl <T: Number> Mul for &Matrix<T> 
     where T: Number 
 {
@@ -975,6 +1099,8 @@ impl <T: Number> From<Matrix4> for Matrix<T> {
 pub struct P_compact <T> {
     pub map: Vec<T>
 }
+
+
 
 impl <T: Number> P_compact <T> {
     
@@ -1113,20 +1239,66 @@ pub async fn test_multiplication(hc: f64) {
 
 
 
+
+//TODO vector transpose into matrix, vector into matrix, matrix 1,n into vector, vector transpose
+
 mod tests {
     use rand::Rng;
     use std::{ f32::EPSILON as EP, f64::EPSILON, f64::consts::PI };
-    use crate::{ core::matrix::{ Matrix }, matrix };
-    use super::{ P_compact, Number, get_optimal_depth, eq_bound_eps, multiply, mul_blocks, strassen, decompose_blocks };
+    use crate::{ vector, core::matrix::{ Matrix }, matrix };
+    use super::{ eq_eps_f64, Vector, P_compact, Number, get_optimal_depth, eq_bound_eps, multiply, mul_blocks, strassen, decompose_blocks };
+
+    /*
+    
+    
+    
+    let rows = 5;
+
+    let columns = 5;
+
+    let max = 100.;
+
+    let mut A: Matrix<f64> = Matrix::rand(rows, columns, max);
+
+    let mut lu = A.lu();
+
+    let R: Matrix<f64> = &lu.L * &lu.U;
+
+    let PL: Matrix<f64> = &lu.P * &lu.L;
+    */
+    
+    //rows > columns
+    //columns > rows
+    //zero pivots initially
+    //edge cases - [1] [1,2,3] [1,2,3]T [0,0,0], all ones etc
 
 
 
-    #[test]
-    fn lu_test() {
-        let rows = 5;
-        let columns = 5;
-        let max = 100.;
+    fn lu_test4() {
+
+        //solve with free variables
+        let mut A: Matrix<f64> = matrix![f64,
+            1., 2., 1., 1., 1.;
+            1., 2.5, 2., 2., 12.;
+            1., 2.9, 3., 1., 7.;
+            1., 4., 4., 2., 3.; 
+        ];
+
+        let mut lu = A.lu();
+
+        let R: Matrix<f64> = &lu.L * &lu.U;
+
+        let PL: Matrix<f64> = &lu.P * &lu.L;
+
+        println!("\n A is {} \n R is {} \n L is {} \n U is {} \n PL is {} \n diff is {} \n d is {:?} \n P is {} \n", A, R, lu.L, lu.U, PL, &A - &R, lu.d, lu.P);
         
+        assert!(false);
+
+    }
+
+
+
+    fn lu_test3() {
         /*
         let mut A: Matrix<f32> = matrix![f32,
             1.3968362, -0.97569525, -5.018955, 0.7136311;
@@ -1135,30 +1307,152 @@ mod tests {
             -1.1067164, -4.347563, -8.04766, 1.6895233;
         ];
         */
+        let mut A: Matrix<f64> = matrix![f64,
+            1.3968362, -0.0009525, -5.018955, 23352352350.7136311; //-0.00009525 TODO
+            -4.6254315, 9.305554, 2.5439813, 1234234234.9787005;
+            -3.233496, -4.881222, -3.2327516, 3534534534.0223584;
+            -1.1067164, -445645645645.347563, -8.04766, 1634634634.6895233;
+        ];
+    
+        let mut lu = A.lu();
         
+        let R: Matrix<f64> = &lu.L * &lu.U;
+
+        let PL: Matrix<f64> = &lu.P * &lu.L;
+
+        let id: Matrix<f64> = Matrix::id(lu.P.rows);
+
+        println!("\n A is {} \n R is {} \n L is {} \n U is {} \n PL is {} \n diff is {} \n d is {:?} \n P is {} \n", A, R, lu.L, lu.U, PL, &A - &R, lu.d, lu.P);
         
-        let mut A: Matrix<f32> = matrix![f32,
+        assert!(eq_bound_eps(&A, &R), "\n lu_test3 A should be equal to R \n");
+    }
+
+
+
+    fn lu_test2() {
+
+        let mut A: Matrix<f64> = matrix![f64,
             1., 2., 1., 1.;
             1., 2., 2., 2.;
             1., 2., 3., 1.;
             1., 2., 4., 2.;
         ];
         
+        let mut lu = A.lu();
         
-        //Matrix::rand(rows, columns, max);
-        
-        let mut lu = Matrix::lu(&A);
-        
-        let R: Matrix<f32> = &lu.L * &lu.U;
+        let R: Matrix<f64> = &lu.L * &lu.U;
 
-        let PL: Matrix<f32> = &lu.P * &lu.L;
+        let PL: Matrix<f64> = &lu.P * &lu.L;
 
-        let withQ = &lu.U * &lu.Q;
+        let id: Matrix<f64> = Matrix::id(lu.P.rows);
 
-        println!("\n A is {} \n R is {} \n L is {} \n U is {} \n PL is {} \n diff is {} \n withQ {} ", A, R, lu.L, lu.U, PL, &A - &R, withQ);
+        println!("\n A is {} \n R is {} \n L is {} \n U is {} \n PL is {} \n diff is {} \n d is {:?} \n P is {} \n", A, R, lu.L, lu.U, PL, &A - &R, lu.d, lu.P);
         
-        assert!(false);
+        assert!(eq_bound_eps(&A, &R), "\n lu_test2 A should be equal to R \n");
+
+        assert_eq!(lu.d.len(), 1, "\n lu_test2 d should contain 1 element \n");
+
+        assert_eq!(lu.d[0], 1, "\n lu_test2 d should contain second col \n");
+        
+        assert!(id != lu.P, "\n lu_test2 P should not be identity \n");
     }
+
+
+
+    fn lu_test1() {
+
+        let mut A: Matrix<f64> = matrix![f64,
+            1., 2., 3.;
+            2., 4., 7.;
+            3., 5., 3.;
+        ];
+        
+        let mut lu = A.lu();
+        
+        let R: Matrix<f64> = &lu.L * &lu.U;
+
+        let PL: Matrix<f64> = &lu.P * &lu.L;
+
+        let id: Matrix<f64> = Matrix::id(lu.P.rows);
+
+        println!("\n A is {} \n R is {} \n L is {} \n U is {} \n PL is {} \n diff is {} \n d is {:?} \n P is {} \n", A, R, lu.L, lu.U, PL, &A - &R, lu.d, lu.P);
+        
+        assert_eq!(A, R, "\n lu_test1 A should be equal to R \n");
+
+        assert!(id != lu.P, "\n lu_test1 P should not be identity \n");
+    }
+    
+
+
+    #[test]
+    fn lu_test() {
+        
+        //lu_test1();
+
+        //lu_test2();
+
+        //lu_test3();
+
+        lu_test4();
+    }
+
+
+
+    //#[test]
+    fn solve_test() {
+            
+        let test = 10;
+
+        for i in 1..test {
+            println!("\n solve: working with {} \n", i);
+
+            let size = i;
+            let max = 10.;
+            let A: Matrix<f64> = Matrix::rand(size, size, max);
+            let b: Vector<f64> = Vector::rand(size as u32, max);
+            let lu = A.lu();
+            let x = A.solve(&b, &lu);
+            let Ax = &A * &x;
+            let PAx = &lu.P * &Ax;
+            
+            for j in 0..PAx.data.len() {
+                let eq = eq_eps_f64(PAx[j], b[j]);
+                if !eq {
+                    println!("\n A is {} \n", A);
+
+                    println!("\n x is {} \n", x);
+            
+                    println!("\n b is {} \n", b);
+            
+                    println!("\n Ax is {} \n", Ax);
+            
+                    println!("\n PAx is {} \n", PAx);
+                }
+                assert!(eq, "entries should be equal");
+            }  
+        }
+    }
+
+
+
+    #[test]
+    fn vector_product() {
+
+        let b = vector![1., 2., 3.]; 
+        
+        let A: Matrix<f32> = matrix![f32,
+            1., 2., 3.;
+            2., 4., 7.;
+            3., 5., 3.;
+        ];
+
+        let Ab = A * b;
+        
+        assert_eq!(Ab[0], 14., "1 entry is 14");
+        assert_eq!(Ab[1], 31., "2 entry is 31");
+        assert_eq!(Ab[2], 22., "3 entry is 22");
+    }
+
 
 
     #[test] 
@@ -1194,45 +1488,9 @@ mod tests {
 
         //assert!(false);
     }
+    
+    
 
-    /*
-    let mut A: Matrix<f32> = matrix![f32,
-        1.3968362, -0.97569525, -5.018955, 0.7136311;
-        -4.6254315, 9.305554, 2.5439813, 1.9787005;
-        -3.233496, -4.881222, -3.2327516, 3.0223584;
-        -1.1067164, -4.347563, -8.04766, 1.6895233;
-    ];
-    */
-    /*
-    matrix![f32,
-        -8.4830675, -2.701917, 9.298159, -2.570094;
-        9.42882, -8.716131, -1.7306446, -2.395703;
-        -7.5796185, -5.5548, -9.178939, -1.6859542;
-        3.9102364, 0.44635415, 3.024425, -5.6284957;
-    ];
-    matrix![f32,
-        0.8956717, -22.886486, 4.0833893, 2.1519172;
-        -1.9232794, -59.128765, 6.972446, 7.3986325;
-        1.8116692, -9.863375, 2.9634025, -5.7019815;
-        8.562616, 8.136245, 6.045971, -6.082481;
-    ];
-    matrix![f32,
-        7.5303693, 0.711317, 2.5686886, -5.9782495;
-        5.018508, 6.046788, -7.033982, 8.691109;
-        -8.266886, -4.963545, 2.6646576, -4.358092;
-        -2.4211168, 0.5297522, 0.13825515, 4.060872;
-    ];
-    */
-    
-    /*
-    let LP: Matrix<f32> = &lu.L * &lu.P;
-    let PtL: Matrix<f32> = &lu.P * &lu.L;
-    let LPt: Matrix<f32> = &lu.L * &lu.P;
-    let L = lu.L.transpose();
-    let PLt: Matrix<f32> = &lu.P * &L;
-    let LtP: Matrix<f32> = &L * &lu.P;
-    */
-    
     #[test]
     fn exchange_rows() {
 
@@ -1425,7 +1683,7 @@ mod tests {
 
 
 
-    #[test]
+    //#[test]
     fn strassen_test() {
         
         let max_side = 50;

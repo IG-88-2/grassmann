@@ -8,30 +8,70 @@ use super::matrix::{Matrix, P_compact};
 pub struct lu <T: Number> {
     pub L: Matrix<T>,
     pub U: Matrix<T>,
-    pub P: Matrix<T>, 
-    pub Q: Matrix<T>
-    /*
-    E: Matrix<T>, //divide by biggest number in the row
-    */
+    pub P: Matrix<T>,
+    pub d: Vec<u32>
 }
 
-//Q
-//rows > columns
-//columns > rows
-//singular
-//initial equilibration 
-//edge cases - [1] [1,2,3] [1,2,3]T [0,0,0], all ones etc
+
 
 pub fn lu_v2<T: Number>(A: &Matrix<T>) -> lu<T> {
-
     let size = min(A.columns, A.rows);
+    let zero = T::from_f64(0.).unwrap();
+    let one = T::from_f64(1.).unwrap();
+
+    let mut E: Matrix<T> = Matrix::id(A.rows);
+    let mut Q: Matrix<T> = Matrix::id(A.columns);
+
     let mut P: P_compact<T> = P_compact::new(size);
-    let mut Q: P_compact<T> = P_compact::new(A.columns);
     let mut U: Matrix<T> = A.clone();
     let mut L: Matrix<T> = Matrix::new(size, size);
     let mut d: Vec<u32> = Vec::new();
     let mut row = 0;
     let mut col = 0;
+
+    //TODO 
+    //matrix type pre-checks (symmetric, positive definite, etc -> optional equilibration + partial pivoting)
+    //TODO
+    //equilibration logic should be more sophisticated
+    //read https://cs.stanford.edu/people/paulliu/files/cs517-project.pdf
+    //i can equilibrate both columns and rows E(LU)Q
+    
+    for i in 0..U.rows {
+        let thresh: T = T::from_f64((2. as f64).powf(16.)).unwrap();
+        let mut l = zero;
+        let mut b = zero;
+        let mut s = one;
+
+        for j in 0..U.columns {
+            let v = U[[i,j]];
+            let n = v * v;
+
+            if v.abs() > b.abs() {
+                b = v; 
+            }
+
+            if v.abs() < s.abs() {
+                s = v; 
+            }
+            
+            l += n;
+        }
+
+        if (b - s).abs() > thresh {
+            continue;
+        }
+
+        let v = T::to_f64(&l).unwrap().sqrt();
+
+        l = T::from_f64(v).unwrap();
+
+        if T::to_f32(&l).unwrap() != 0. {
+            for j in 0..U.columns {
+                //U[[i,j]] /= l;
+            }
+            //E[[i,i]] = l;
+        }
+    }
     
     for i in 0..U.rows {
         let mut k = row;
@@ -79,22 +119,10 @@ pub fn lu_v2<T: Number>(A: &Matrix<T>) -> lu<T> {
         col += 1;
     }
     
-    //wrong how can i keep them upper triangular ?
-
-    let mut last = A.columns - 1;
-
-    for i in 0..d.len() {
-        let next = d[i] as usize;
-        Q.exchange_rows(next, last);
-        last -= 1;
-    }
-
-    println!("\n done Q is {} \n", Q.into_p());
-    
     lu {
         P: P.into_p(),
-        Q: Q.into_p(),
-        L,
-        U
+        L: &E * &L,
+        U,
+        d
     }
 }
