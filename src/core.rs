@@ -7,3 +7,4 @@ pub mod matrix;
 pub mod utils;
 pub mod multiply;
 pub mod lu;
+pub mod solve;

@@ -33,7 +33,7 @@ use rand::Rng;
 use num_traits::{Float, Num, NumAssignOps, NumOps, PrimInt, Signed, cast, identities};
 use web_sys::Event;
 use crate::{Number, vector, workers::Workers};
-use super::{lu::{lu, lu_v2}, matrix3::Matrix3, matrix4::Matrix4, multiply::{ multiply_threads, strassen, mul_blocks, get_optimal_depth, decompose_blocks }, utils::eq_eps_f64, vector::Vector};
+use super::{lu::{lu, lu_v2}, matrix3::Matrix3, matrix4::Matrix4, multiply::{ multiply_threads, strassen, mul_blocks, get_optimal_depth, decompose_blocks }, solve::solve, utils::eq_eps_f64, vector::Vector};
 
 /*
 TODO 
@@ -281,47 +281,8 @@ impl <T: Number> Matrix<T> {
 
 
 
-    pub fn solve(&self, b: &Vector<T>, lu: &lu<T>) -> Vector<T> {
-        let zero = T::from_f64(0.).unwrap();
-        let Pb: Vector<T> = &lu.P * b;
-        let PL: Matrix<T> = &lu.P * &lu.L;
-        let mut y = Vector::new(vec![zero; PL.columns]);
-        let mut x = Vector::new(vec![zero; lu.U.columns]);
-
-        //TODO
-        if !lu.d.is_empty() {
-            return x;
-        }
-        
-        for i in 0..PL.rows {
-            let mut acc = b[i];
-
-            for j in 0..(i + 1) {
-                let c = PL[[i, j]];
-                
-                if j == i {
-                    y[i] = acc / c;
-                } else {
-                    acc -= c * y[j];
-                }
-            }
-        }
-        
-        for i in (0..lu.U.rows).rev() {
-            let mut acc = y[i];
-
-            for j in (i..lu.U.rows).rev() {
-                let c = lu.U[[i, j]];
-                
-                if j == i {
-                    x[i] = acc / c;
-                } else {
-                    acc -= c * x[j];
-                }
-            }
-        }
-        
-        x
+    pub fn solve(&self, b: &Vector<T>, lu: &lu<T>) -> Option<Vector<T>> {
+        solve(b, lu)
     }
 
 
@@ -622,8 +583,42 @@ impl <T: Number> Matrix<T> {
 
 
 
-    pub fn trace() {
+    pub fn trace(&self) -> T {
 
+        let mut acc = T::from_f64(0.).unwrap();
+        let d = min(self.rows, self.columns);
+        
+        for i in 0..d {
+            acc += self[[i, i]]; 
+        }
+
+        acc
+    }
+
+
+    //TODO - around each axis
+    pub fn rotation() {
+
+    }
+
+
+    pub fn project(&self, b:&Vector<T>) -> Vector<T> {
+
+        let A = self;
+
+        assert_eq!(A.rows, b.data.len(), "A and b dimensions should correspond");
+
+        let mut At = A.transpose(); //TODO transpose should behave, be called in the same way for all types (same applies for remaining methods)
+
+        let Atb: Vector<T> = &At * b;
+
+        let AtA: Matrix<T> = &At * A;
+        
+        let lu = AtA.lu();
+
+        let x = AtA.solve(&Atb, &lu).unwrap();
+
+        A * &x
     }
 
 
@@ -823,6 +818,15 @@ impl <T: Number> Matrix<T> {
 
         true
     }
+
+
+
+    pub fn is_zero(&self) -> bool {
+
+        let zero = T::from_f64(0.).unwrap();
+
+        self.data.iter().all(|x| { *x == zero })
+    } 
 
 
 
@@ -1467,43 +1471,288 @@ mod tests {
     use super::{ eq_eps_f64, Vector, P_compact, Number, get_optimal_depth, eq_bound_eps, multiply, mul_blocks, strassen, decompose_blocks };
 
     
-    
-    #[test]
-    fn solve() {
-        let test = 3;
+
+    fn solve9() {
+        let test = 50;
+
+        for i in 1..test {
+            println!("\n solve9: working with {} \n", i);
+
+            let size = i;
+
+            let max = 1000.;
+
+            let A: Matrix<f64> = Matrix::rand_shape(size, max);
+            
+            let b: Vector<f64> = Vector::rand(A.rows as u32, max);
+            
+            let lu = A.lu();
+            
+            let x = A.solve(&b, &lu);
+            
+            if x.is_some() {
+
+                let x = x.unwrap();
+
+                println!("\n solved with x {} \n", x);
+
+                let Ax = &A * &x;
+
+                for j in 0..Ax.data.len() {
+                    let eq = eq_eps_f64(Ax[j], b[j]);
+                    if !eq {
+                        println!("\n A is {} \n", A);
+                        println!("\n x is {} \n", x);
+                        println!("\n b is {} \n", b);
+                        println!("\n Ax is {} \n", Ax);
+                        println!("\n diff is {} \n", &Ax - &b);
+                    }
+                    assert!(eq, "entries should be equal");
+                } 
+            } else {
+                println!("\n no solution! projecting\n");
+
+                let b2 = A.project(&b);
+
+                assert!(b2 != b, "b2 and b should be different");
+
+                let x = A.solve(&b2, &lu);
+
+                assert!(x.is_some(), "should be able to solve for projection");
+
+                let x = x.unwrap();
+                let Ax = &A * &x;
+
+                for j in 0..Ax.data.len() {
+                    let eq = eq_eps_f64(Ax[j], b2[j]);
+                    if !eq {
+                        println!("\n A is {} \n", A);
+                        println!("\n x is {} \n", x);
+                        println!("\n b2 is {} \n", b2);
+                        println!("\n Ax is {} \n", Ax);
+                        println!("\n diff is {} \n", &Ax - &b2);
+                    }
+                    assert!(eq, "entries should be equal");
+                } 
+            }
+        }
+    }
+
+
+
+    fn solve8() {
+        let test = 50;
 
         for i in 1..test {
             println!("\n solve: working with {} \n", i);
 
-            let size = 4;
-            let max = 10.;
+            let size = i;
+            let max = 1000.;
             let A: Matrix<f64> = Matrix::rand(size, size, max);
             let b: Vector<f64> = Vector::rand(size as u32, max);
             let lu = A.lu();
-            let x = A.solve(&b, &lu);
+            let x = A.solve(&b, &lu).unwrap();
             let Ax = &A * &x;
-            let PAx = &lu.P * &Ax;
-            
-            for j in 0..PAx.data.len() {
-                let eq = eq_eps_f64(PAx[j], b[j]);
+
+            println!("\n solve: Ax is {} \n b is {} \n", Ax, b);
+
+            for j in 0..Ax.data.len() {
+                let eq = eq_eps_f64(Ax[j], b[j]);
                 if !eq {
                     println!("\n A is {} \n", A);
-
                     println!("\n x is {} \n", x);
-            
                     println!("\n b is {} \n", b);
-            
                     println!("\n Ax is {} \n", Ax);
-            
-                    println!("\n PAx is {} \n", PAx);
-
-                    println!("\n diff is {} \n", &PAx - &b);
+                    println!("\n diff is {} \n", &Ax - &b);
                 }
                 assert!(eq, "entries should be equal");
             }  
         }
     }
 
+
+
+    fn solve7() {
+
+        let A: Matrix<f64> = matrix![f64,
+            1., 2., 2., 1., 2., 6.;
+            1., 2., 1., 1., 1., 3.;
+            1., 2., 3., 1., 3., 9.; 
+        ];
+        let b: Vector<f64> = vector![1., 0., 2.];
+
+        let lu = A.lu();
+
+        let x = A.solve(&b, &lu).unwrap();
+
+        println!("\n x is {} \n", x);
+
+        assert_eq!(x[0],-3., "x0 is -3.");
+        assert_eq!(x[1], 1., "x1 is  1.");
+        assert_eq!(x[2], 1., "x2 is  1.");
+        assert_eq!(x[3], 0., "x3 is  0.");
+        assert_eq!(x[4], 0., "x4 is  0.");
+        assert_eq!(x[5], 0., "x5 is  0.");
+    }
+
+
+
+    fn solve6() {
+
+        let A: Matrix<f64> = matrix![f64,
+            1., 2., 2.;
+            1., 2., 1.;
+            1., 2., 3.;
+            1., 2., 3.;
+            1., 2., 3.;
+        ];
+
+        let b: Vector<f64> = vector![2., 1., 3., 3., 3.];
+
+        let lu = A.lu();
+
+        let x = A.solve(&b, &lu).unwrap();
+
+        println!("\n x is {} \n", x);
+        
+        assert_eq!(x[0],-2., "x0 is -2.");
+        assert_eq!(x[1], 1., "x1 is  1.");
+        assert_eq!(x[2], 1., "x2 is  1.");
+    }
+
+
+
+    fn solve5() {
+
+        let A: Matrix<f64> = matrix![f64,
+            1., 2., 2.;
+            1., 2., 1.;
+            1., 2., 3.;
+        ];
+        let b: Vector<f64> = vector![2., 1., 3.];
+
+        let lu = A.lu();
+
+        let x = A.solve(&b, &lu).unwrap();
+
+        println!("\n x is {} , Ax is {} \n", x, &A * &x);
+        
+        assert_eq!(x[0],-2., "x0 is -2.");
+        assert_eq!(x[1], 1., "x1 is  1.");
+        assert_eq!(x[2], 1., "x2 is  1.");
+    }
+
+
+
+    fn solve4() {
+
+        let A: Matrix<f64> = Matrix::id(3);
+
+        let b: Vector<f64> = vector![3., 1., 3.];
+
+        let lu = A.lu();
+
+        let x = A.solve(&b, &lu).unwrap();
+
+        println!("\n x is {} \n", x);
+
+        assert_eq!(x[0], 3., "x0 is 3.");
+        assert_eq!(x[1], 1., "x1 is 1.");
+        assert_eq!(x[2], 3., "x2 is 3.");
+    }
+
+
+
+    fn solve3() {
+
+        let A: Matrix<f64> = matrix![f64,
+            1., 2., 2.;
+            1., 1., 1.;
+            1., 2., 3.;
+        ];
+
+        let b: Vector<f64> = vector![3., 1., 3.];
+
+        let lu = A.lu();
+
+        let x = A.solve(&b, &lu).unwrap();
+
+        println!("\n x is {} \n", x);
+
+        assert_eq!(x[0],-1., "x0 is -1");
+        assert_eq!(x[1], 2., "x1 is  2");
+        assert_eq!(x[2], 0., "x2 is  0");
+    }
+
+
+
+    fn solve2() {
+
+        let A: Matrix<f64> = matrix![f64,
+            1., 5., 7.;
+        ];
+
+        let b: Vector<f64> = vector![2.];
+
+        let lu = A.lu();
+
+        let x = A.solve(&b, &lu).unwrap();
+        
+        assert_eq!(x[0], 2., "x0 is 2");
+        assert_eq!(x[1], 0., "x1 is 0");
+        assert_eq!(x[2], 0., "x2 is 0");
+    }
+
+
+
+    fn solve1() {
+
+        let A: Matrix<f64> = matrix![f64,
+            1.;
+        ];
+
+        let b: Vector<f64> = vector![2.];
+
+        let lu = A.lu();
+
+        let x = A.solve(&b, &lu).unwrap();
+
+        assert_eq!(x[0], 2., "x is 2");
+    }
+
+
+
+    #[test]
+    fn solve() {
+       
+       solve9();
+
+       solve8();
+
+       solve7();
+       
+       solve6();
+
+       solve5();
+    
+       solve4();
+
+       solve3();
+
+       solve2();
+
+       solve1();
+    }
+
+
+
+    //TODO
+    //TODO properties and geometry of higher dimensional spaces
+    #[test]
+    fn projection() {
+
+    }
+    
 
 
     fn lu_test10() {

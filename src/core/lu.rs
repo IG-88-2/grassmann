@@ -133,7 +133,7 @@ pub fn lu_v2<T: Number>(A: &Matrix<T>) -> lu<T> {
             }
         }
         
-        println!("\n next step {} \n L {} \n U {} \n ", i + 1, L, U);
+        //println!("\n next step {} \n L {} \n U {} \n ", i + 1, L, U);
 
         row += 1;
         col += 1;

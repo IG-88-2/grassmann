@@ -110,6 +110,22 @@ impl <T:Number> Vector <T> {
 
         v
     }
+
+
+    //TODO
+    pub fn wedge() {
+
+    }
+
+
+    pub fn is_zero(&self) -> bool {
+        
+        self.data.iter().all(|x| { 
+
+            (T::to_f64(x).unwrap()).abs() < f32::EPSILON as f64 
+
+        })
+    } 
 }
 
 

@@ -17,11 +17,11 @@ use std::{
         Neg
     }
 };
-use crate::{Float, matrix3, matrix3::Matrix3, vec4, vector4::Vector4};
+use crate::{Float, matrix3, matrix3::Matrix3, vec4, vector4::Vector4, vector3::Vector3};
 extern crate wasm_bindgen;
 use std::f64::consts::PI;
 use wasm_bindgen::prelude::*;
-
+use super::matrix::Matrix;
 
 
 #[macro_export]
@@ -360,11 +360,6 @@ impl Matrix4 {
         x * y * z
     }
 
-
-    //TODO
-    pub fn gimbal() {
-
-    }
 
 
     pub fn scale(s: f64) -> Matrix4 {
@@ -863,11 +858,62 @@ impl From<Matrix3> for Matrix4 {
 
 
 mod tests {
-    use std::f64::consts::PI;
-
+    use std::{f32::EPSILON, f64::consts::PI};
+    use crate::{ vec3 };
     use super::{
-        Matrix4
+        Vector3,
+        Matrix3,
+        Matrix4,
+        Matrix
     };
+
+    //TODO!
+    #[test]
+    fn gimbal_lock() {
+        
+        let basis = Matrix3::id().into_basis();
+        let v = vec3![2., 3., 4.];
+
+        let x_rad = PI / 10.;
+        let y_rad = PI / 5.; //PI / 2.;
+        let z_rad = PI / 10.;
+        
+        let r1: Matrix3 = Matrix4::rotation(x_rad, y_rad, z_rad).into();
+        
+        let x_rad2 = PI / 10.;
+        let y_rad2 = PI / 10.;
+        let z_rad2 = PI / 10.;
+
+        let r2: Matrix3 = Matrix4::rotation(x_rad2, y_rad2, z_rad2).into();
+        let r1v = &r1 * &v;
+        let r2v = &r2 * &v;
+        
+        let r3: Matrix3 = Matrix4::rotation(x_rad + x_rad2, y_rad + y_rad2, z_rad + z_rad2).into();
+        let r2r1: Matrix3 = &r2 * &r1;
+        
+        let r3v = &r3 * &v;
+        let r2r1v = &r2r1 * &v;
+        
+        println!("\n r1 is {} \n r2 is {} \n r3 is {} \n r2r1 is {} \n", r1, r2, r3, r2r1);
+
+        println!("\n r3v is {} \n r2r1v {} \n", r3v, r2r1v);
+
+        let x = basis[0];
+        let y = basis[1];
+        let z = basis[2];
+
+        let r3v_x = r3v.angle(&x);
+        let r3v_y = r3v.angle(&y);
+        let r3v_z = r3v.angle(&z);
+
+        let r2r1v_x = r2r1v.angle(&x);
+        let r2r1v_y = r2r1v.angle(&y);
+        let r2r1v_z = r2r1v.angle(&z);
+
+        println!("\n r3v_x is {} \n r3v_y is {} \n r3v_z is {} \n", r3v_x, r3v_y, r3v_z);
+
+        println!("\n r2r1v_x is {} \n r2r1v_y is {} \n r2r1v_z is {} \n", r2r1v_x, r2r1v_y, r2r1v_z);
+    }
     
     #[test]
     fn perspective() {

@@ -12,7 +12,7 @@ use std::{f64::consts::PI, fmt, fmt::{
         Div,
         Neg
     }};
-use crate::{Float, vec3, vector3::Vector3};
+use crate::{Float, vec3, vector, matrix, vector3::Vector3};
 use super::{matrix::Matrix, matrix4::Matrix4, utils::{clamp, eq_eps_f64}, vector::Vector, vector4::Vector4};
 
 
@@ -279,60 +279,9 @@ impl Matrix3 {
 
         Matrix3::from_basis(x, y, z)
     }
-
-
-
-    pub fn projection(A:&Matrix3, b:&Vector3) -> Vector3 {
-
-        let mut At = A.clone();
-
-        At.t();
-
-        println!("\n projection: At is {} \n", At);
-        
-        let Atb: Vector3 = &At * b;
-
-        println!("\n projection: Atb is {} \n", Atb);
-
-        let AtA: Matrix3 = &At * A;
-
-        let basis = AtA.into_basis();
-
-        let x = basis[0];
-        let y = basis[1];
-        let z = x.cross(&y);
-
-        let ang = Atb.angle(&z);
-        let dt: f64 = &Atb * &z;
-
-        println!("\n ANGLE is {} | dot is {} \n", ang, dt);
-
-        let m: Matrix<f64> = AtA.clone().into();
-
-        println!("\n projection: AtA is {} | rank is {} \n", AtA, m.rank());
-        
-        let x = AtA.solve(&Atb);
-
-        println!("\n projection: x is {} \n", x);
-
-        x
-    }
-
-
-
-    pub fn solve(&self, b: &Vector3) -> Vector3 {
-        
-        let A: Matrix<f64> = self.into();
-
-        let b: Vector<f64> = b.into();
-
-        let lu = A.lu();
-        
-        A.solve(&b, &lu).into()
-    }
-
-
     
+
+
     pub fn apply(&mut self, f: fn(f64) -> f64) {
         self[0] = f(self[0]);
         self[1] = f(self[1]);
@@ -343,6 +292,45 @@ impl Matrix3 {
         self[6] = f(self[6]); 
         self[7] = f(self[7]);
         self[8] = f(self[8]);
+    }
+
+
+
+    pub fn project(&self, b:&Vector3) -> Vector3 {
+
+        let A = self;
+
+        let mut At = A.clone();
+
+        At.t();
+        
+        let Atb: Vector3 = &At * b;
+
+        let AtA: Matrix3 = &At * A;
+
+        let x = AtA.solve(&Atb);
+
+        A * x.unwrap()
+    }
+
+
+
+    pub fn solve(&self, b: &Vector3) -> Option<Vector3> {
+        
+        let A: Matrix<f64> = self.into();
+
+        let b: Vector<f64> = b.into();
+
+        let lu = A.lu();
+        
+        let result = A.solve(&b, &lu);
+
+        if result.is_some() {
+            let v: Vector3 = result.unwrap().into();
+            Some(v)
+        } else {
+            None
+        }        
     }
 }
 
@@ -650,7 +638,7 @@ mod tests {
     use std::{f32::EPSILON as EP, f64::EPSILON, f64::consts::PI};
     use rand::Rng;
     use crate::core::{matrix::Matrix, matrix4::Matrix4, vector4::Vector4};
-    use super::{Matrix3, Vector3, eq_eps_f64};
+    use super::{Matrix3, vec3, Vector, matrix, vector, Vector3, eq_eps_f64};
     
 
 
@@ -672,90 +660,79 @@ mod tests {
         println!("\n id is {} \n", id);
     }
 
-
+    
     
     #[test]
     fn projection() {
-        let mut rng = rand::thread_rng();
-        let c1 = rng.gen_range(-5.,5.);
-        let c2 = rng.gen_range(-5.,5.);
 
-        let x = Vector3::rand(10.);
-        let y = Vector3::rand(10.);
-        let mut z: Vector3 = (&x * c1) + (&y * c2);
-        
-        z.normalize();
+        let test = 10; //00;
 
-        let m: Matrix<f64> = Matrix3::from_basis(x,y,z).into();
-        
-        println!("\n m is {} \n", m);
+        for i in 1..test {
+            let mut rng = rand::thread_rng();
+            let f = i as f64;
+            let c1 = rng.gen_range(-f, f);
+            let c2 = rng.gen_range(-f, f);
 
-        assert_eq!(m.rank(), 2, "projection: m rank should be 2");
+            let rot: Matrix3 = Matrix4::rotation(PI / 4., 0., 0.).into();
 
-        let ortho: Matrix3 = Matrix3::orthonormal(&x);
-        let rot: Matrix3 = Matrix4::rotation(PI / 4., 0., 0.).into();
-        let t: Vector3 = &(ortho * rot) * y;
-        let tp: Vector3 = Matrix3::projection(&m.into(), &t);
+            let x = Vector3::rand(10.);
+            let y = Vector3::rand(10.);
 
-        println!(" \n tp is {} \n t is {} \n ", tp, t);
+            let mut z = (&x * c1) + (&y * c2);
 
-        assert!(false);
+            //z.normalize();
 
-        //assert rank is 2
-        /*
-        assert!(eq_eps_f64(m.det(), 0.), "matrix should be singular");
-        
-        //project t on the plane
-        let tp: Vector3 = Matrix3::projection(&m, &t);
+            let h = x.cross(&y);
 
-        let d = tp.distance(&t);
-        
-        assert!(d != 0., "t,tp distance should not be zero");
+            let a: f64 = &x * &h;
+            let b: f64 = &y * &h;
+            let c: f64 = &z * &h;
 
-        
-        
-        let e: Vector3 = t - tp;
-        let d: f64 = e * y;
-        */
-        
-        //TODO
-        //assert!(eq_eps_f64(d, 0.), "d should be zero {}", d);
-        //TODO modify proj
-        //make sure proj orth to cross of in space
-        //TODO AtA can be singular, when ?
-        //projection on full space is the same (try id)
-        //e is orthogonal
-        //project cross get zero
-        //apply M
-        //x angle with y id
-        //x angle with z id
-        
-        //rotate y around x
-        //rotate y in id space 
-        //apply rotation which took id x to x 
-        
-        //id x vs x
-        //relative to y,z
-        //original location pi/2 with y,z
-        //current location
-        
-        //let dst: Vector3 = x - id_x;
-        //which rotation is going to produce this effect ???
-        //let r = Matrix4::rotation(dst.x, dst.y, dst.z);
+            assert!(a < f32::EPSILON as f64, "a should be equal to zero");
+            assert!(b < f32::EPSILON as f64, "a should be equal to zero");
+            assert!(c < f32::EPSILON as f64, "a should be equal to zero");
+            
+            let m: Matrix<f64> = Matrix3::from_basis(x,y,z).into();
+            assert_eq!(m.rank(), 2, "projection: m rank should be 2");
+            
+            let ortho: Matrix3 = Matrix3::orthonormal(&x);
+            let v: Vector3 = &(ortho * rot) * y;
+            let result = m.solve(&v.into(), &(m.lu()));
+            assert!(result.is_none(), "projection: result should be none");
+            
+            let mp: Matrix3 = m.clone().into();
+            let vp: Vector3 = mp.project(&v);
+            
+            let dot: f64 = &vp * &h;
+            let angle = vp.angle(&h);
+            
+            println!("\n dot is {} | angle is {} \n", dot, angle);
+            
+            assert!(dot < f32::EPSILON as f64, "z * vp should be equal to zero");
+            assert!((angle - PI / 2.).abs() < f32::EPSILON as f64, "angle should be equal to pi / 2");
 
-        //A through rotational composition
-        //B through construction of orthonormal basis
-        //x - id x - decompose into rotations
-        //what rotation i need per dim
+            let e: Vector3 = &vp - &v;
+            let dot: f64 = &e * &x;
+            assert!(dot < f32::EPSILON as f64, "e * x should be equal to zero");
+            
+            let mp: Matrix3 = m.clone().into();
+            let hp: Vector<f64> = mp.project(&h).into();
 
-        //take x - vector from plane
-        //rotate y around x
-        //rotation
-        // 
+            println!("\n hp is {} \n", hp);
+            assert!(hp.is_zero(), "hp should be zero");
 
-        //vector inside subspace - invariant
-        //x angle with z axis
-        //rotate y rotation by this angle
+            let mp: Matrix3 = m.clone().into();
+            let vp2: Vector3 = mp.project(&vp);
+            let diff: Vector<f64> = (vp - vp2).into();
+            assert!(diff.is_zero(), "diff should be zero");
+
+            let id = Matrix3::id();
+            let r = id.project(&vp);
+
+            println!("\n r is {} | vp is {} \n", r, vp);
+            let diff2: Vector<f64> = (r - vp).into();
+            assert!(diff2.is_zero(), "diff2 should be zero");
+        }
     }
     
 
