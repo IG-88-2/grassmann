@@ -1,6 +1,7 @@
+#![allow(dead_code, warnings)]
 use std::{cmp::min, collections::{HashMap, HashSet}, f32::EPSILON};
 use crate::Number;
-use super::matrix::{Matrix, P_compact};
+use super::matrix::{Matrix, P_compact, Partition};
 
 
 
@@ -75,7 +76,124 @@ fn equilibrate <T: Number> (U:&mut Matrix<T>) -> (Matrix<T>, Matrix<T>) {
 
 
 
-pub fn lu_v2<T: Number>(A: &Matrix<T>) -> lu<T> {
+pub fn block_lu_threads() {
+/*
+task A = L11 * U11
+1*task L11 -> L11inv
+1*task U11 -> U11inv
+task A11inv = U11inv * L11inv
+task SC = A21 * A11inv * A12
+task L21 = A21 * U11inv
+task U12 = L11inv * A12
+*/
+}
+
+
+
+/*
+    pre-pivoting
+    partition r - n, r - m 
+    A11 A12
+    A21 A22
+
+    L11 0       U11 U12
+    L21 L22       0 U22
+    
+    L11 * U11     L11 * U12  
+    L21 * U11     L21 * U12 + L22 * U22
+
+    A11 = L11 * U11;
+    A21 = L21 * U11 ---> A21 * U11inv = L21;
+    A12 = L11 * U12 ---> L11inv * A12 = U12;
+    L11, U11, L21, U12
+    A22 = L21 * U12 + L22 * U22
+    A22 = A21 * U11inv * L11inv * A12 + L22 * U22
+    I = U11inv * L11inv * L11 * U11, L11 * U11 = A11 -> A11inv = U11inv * L11inv
+    A22 = A21 * A11inv * A12 + L22 * U22
+    SC = A21 * A11inv * A12
+    A22 - SC = L22 * U22
+*/
+pub fn block_lu<T: Number>(A: &Matrix<T>) -> Option<lu<T>> {
+    
+    let r = 2;
+
+    let steps = min(A.rows, A.columns);
+    
+    if steps <= r {
+        
+        return lu_v2(A, false, false);
+
+    } else {
+
+        let p = A.partition(r);
+        
+        let lu_A11 = lu_v2(&p.A11, false, false);
+
+        if lu_A11.is_none() {
+           return None; 
+        }
+
+        let lu_A11 = lu_A11.unwrap();
+
+        let L11 = lu_A11.L.clone();
+        let U11 = lu_A11.U.clone();
+        
+        let L11_inv = L11.inv_lower_triangular().unwrap();
+        let U11_inv = U11.inv_upper_triangular().unwrap();
+
+        let A11_inv: Matrix<T> = &U11_inv * &L11_inv; //p.A11.inv(&lu_A11).unwrap();
+        
+        let L21: Matrix<T> = &p.A21 * &U11_inv;
+        let U12: Matrix<T> = &L11_inv * &p.A12;
+
+        let SC: Matrix<T> = &(&p.A21 * &A11_inv) * &p.A12;
+
+        let A22: Matrix<T> = p.A22 - SC;
+        
+        let next = block_lu(&A22).unwrap();
+
+        /*
+        L11 0       U11 U12
+        L21 L22       0 U22
+        */
+        
+        let L22 = next.L;
+        let U22 = next.U;
+        let L12 = Matrix::new(U12.rows, U12.columns);
+        let U21 = Matrix::new(L22.rows, L22.columns);
+
+        let L_p = Partition {
+            A11: L11,
+            A21: L21,
+            A22: L22,
+            A12: L12
+        };
+        
+        let U_p = Partition {
+            A11: U11,
+            A21: U21,
+            A22: U22,
+            A12: U12
+        };
+
+        let L: Matrix<T> = Matrix::assemble(&L_p);
+        let U: Matrix<T> = Matrix::assemble(&U_p);
+        let P: Matrix<T> = Matrix::id(L.rows);
+
+        let result = lu {
+            L,
+            U,
+            P,
+            d: Vec::new()
+        };
+
+        Some(result)
+    }
+}
+
+
+
+pub fn lu_v2<T: Number>(A: &Matrix<T>, eq:bool, pp: bool) -> Option<lu<T>> {
 
     let steps = min(A.rows, A.columns);
     let mut P: P_compact<T> = P_compact::new(A.rows);
@@ -84,31 +202,49 @@ pub fn lu_v2<T: Number>(A: &Matrix<T>) -> lu<T> {
     let mut d: Vec<u32> = Vec::new();
     let mut row = 0;
     let mut col = 0;
+    let mut E: Option<Matrix<T>> = None;
+    let mut Q: Option<Matrix<T>> = None;
 
-    let (E, Q) = equilibrate(&mut U);
-    
+    if eq {
+        let r = equilibrate(&mut U);
+        E = Some(r.0); 
+        Q = Some(r.1);
+    }
+
     for i in 0..steps {
         let mut k = row;
         let mut p = U[[row, col]];
         
-        for j in (row + 1)..U.rows {
-            let c = U[[j, col]];
-            if c.abs() > p.abs() {
-                p = c;
-                k = j;
-            }  
+        if pp {
+            for j in (row + 1)..U.rows {
+                let c = U[[j, col]];
+                if c.abs() > p.abs() {
+                    p = c;
+                    k = j;
+                }  
+            }
         }
 
-        //println!("evaluate next {} | {}", T::to_f32(&p).unwrap(), f32::EPSILON);
+        //floating point arithmetic issue, which epsilon should i choose ? 
+        let eps = f32::EPSILON * 10.; //f32::EPSILON
 
-        if T::to_f32(&p).unwrap().abs() < f32::EPSILON {
+        //println!("evaluate next {} | {}", T::to_f32(&p).unwrap(), eps);
 
-            d.push(i as u32);
+        if T::to_f32(&p).unwrap().abs() < eps {
 
-            col += 1;
+            if pp {
 
-            continue;
+                d.push(i as u32);
 
+                col += 1;
+
+                continue;
+
+            } else {
+
+                return None;
+
+            }
         } else {
 
             if k != row {
@@ -139,10 +275,16 @@ pub fn lu_v2<T: Number>(A: &Matrix<T>) -> lu<T> {
         col += 1;
     }
     
-    lu {
-        P: P.into_p(),
-        L: &E * &L,
-        U,
-        d
+    if eq {
+       L = &(E.unwrap()) * &L;
     }
+
+    Some(
+        lu {
+            P: P.into_p(),
+            L,
+            U,
+            d
+        }
+    )
 }

@@ -33,7 +33,9 @@ use rand::Rng;
 use num_traits::{Float, Num, NumAssignOps, NumOps, PrimInt, Signed, cast, identities};
 use web_sys::Event;
 use crate::{Number, vector, workers::Workers};
-use super::{lu::{lu, lu_v2}, matrix3::Matrix3, matrix4::Matrix4, multiply::{ multiply_threads, strassen, mul_blocks, get_optimal_depth, decompose_blocks }, solve::solve, utils::eq_eps_f64, vector::Vector};
+use super::{lu::{block_lu, lu, lu_v2}, matrix3::Matrix3, 
+matrix4::Matrix4, multiply::{ multiply_threads, strassen, mul_blocks, get_optimal_depth, decompose_blocks }, 
+solve::{solve_upper_triangular, solve, solve_lower_triangular}, utils::eq_eps_f64, vector::Vector};
 
 /*
 TODO 
@@ -75,12 +77,14 @@ next x = x - u (shifting x towards better accuracy)
 //pooling (pick number per block defined by stride length)
 //pickens
 //fft
-//rank
+//wavelets
 //stochastic
 //markov
 //controllability matrix
 //diag
 //identity
+//vandermonde
+
 //perspective
 //rotation
 //reflection
@@ -143,6 +147,15 @@ next x = x - u (shifting x towards better accuracy)
 //matrix columns into vectors
 //matrix rows into vectors
 //multiply in threads A * col i - cols of B / N threads - k col per threads - assemble
+
+
+
+pub struct Partition <T: Number> {
+    pub A11: Matrix<T>,
+    pub A12: Matrix<T>,
+    pub A21: Matrix<T>,
+    pub A22: Matrix<T>
+}
 
 
 
@@ -264,19 +277,130 @@ impl <T: Number> Matrix<T> {
 
 
     pub fn lu (&self) -> lu<T> {
-        let mut lu = lu_v2(self);
-        lu
+        let mut lu = lu_v2(self, true, true);
+        lu.unwrap()
+    }
+
+
+
+    pub fn block_lu(&self) -> lu<T> {
+        let mut lu = block_lu(self);
+        lu.unwrap()
+    }
+
+
+
+    pub fn assemble(p: &Partition<T>) -> Matrix<T> {
+
+        //A11 r x r
+        //A12 r x (n - r)
+        //A21 (n - r) x r
+        //A22 (n - r) x (n - r)
+
+        let rows = p.A11.rows + p.A21.rows;
+        
+        let columns = p.A11.columns + p.A12.columns; 
+        
+        let mut A = Matrix::new(rows, columns);
+        
+        for i in 0..p.A11.rows {
+            for j in 0..p.A11.columns {
+                A[[i, j]] = p.A11[[i, j]];
+            }
+        }
+
+        for i in 0..p.A12.rows {
+            for j in 0..p.A12.columns {
+                A[[i, j + p.A11.columns]] = p.A12[[i, j]];
+            }
+        }
+        
+        for i in 0..p.A21.rows {
+            for j in 0..p.A21.columns {
+                A[[i + p.A11.rows, j]] = p.A21[[i, j]];
+            }
+        }
+
+        for i in 0..p.A22.rows {
+            for j in 0..p.A22.columns {
+                A[[i + p.A11.rows, j + p.A11.columns]] = p.A22[[i, j]];
+            }
+        }
+
+        A
+    }
+
+
+
+    pub fn partition(&self, r: usize) -> Partition<T> {
+
+        assert!(r < self.columns, "r should be less than columns");
+        assert!(r < self.rows, "r should be less than rows");
+
+        //A11 r x r
+        //A12 r x (n - r)
+        //A21 (n - r) x r
+        //A22 (n - r) x (n - r)
+
+        let mut A11: Matrix<T> = Matrix::new(r, r);
+        let mut A12: Matrix<T> = Matrix::new(r, self.columns - r);
+        let mut A21: Matrix<T> = Matrix::new(self.rows - r, r);
+        let mut A22: Matrix<T> = Matrix::new(self.rows - r, self.columns - r);
+
+        for i in 0..r {
+            for j in 0..r {
+                A11[[i,j]] = self[[i, j]];
+            }
+        }
+
+        for i in 0..r {
+            for j in 0..(self.columns - r) {
+                A12[[i,j]] = self[[i,j + r]];
+            }
+        }
+
+        for i in 0..(self.rows - r) {
+            for j in 0..r {
+                A21[[i,j]] = self[[i + r, j]];
+            }
+        }
+
+        for i in 0..(self.rows - r) {
+            for j in 0..(self.columns - r) {
+                A22[[i,j]] = self[[i + r, j + r]];
+            }
+        }
+
+        Partition {
+            A11,
+            A12,
+            A21,
+            A22
+        }
     }
 
 
 
     pub fn rank(&self) -> u32 {
 
-        let lu = self.lu();
+        if self.columns > self.rows {
 
-        let rank = min(self.rows, self.columns) - lu.d.len();
+            let At = self.transpose();
 
-        rank as u32
+            let lu = At.lu();
+
+            let rank = At.columns - lu.d.len();
+    
+            rank as u32
+
+        } else {
+
+            let lu = self.lu();
+
+            let rank = self.columns - lu.d.len();
+    
+            rank as u32
+        }
     }
 
 
@@ -321,10 +445,117 @@ impl <T: Number> Matrix<T> {
     
     
 
-    pub fn inv(&self) -> Matrix<T> {
-        //if matrix diagonal 1/e
-        self.clone()
+    //left, right, pseudo, moore-penrose ?
+    pub fn inv(&self, lu: &lu<T>) -> Option<Matrix<T>> {
+       
+        if self.rows != self.columns {
+            return None;
+        }
 
+        if !lu.d.is_empty() {
+            return None;
+        }
+
+        let id: Matrix<T> = Matrix::id(self.rows);
+
+        let bs = id.into_basis();
+
+        let mut list: Vec<Vector<T>> = Vec::new();
+
+        for i in 0..bs.len() {
+            let b = &bs[i];
+            let b_inv = self.solve(b, &lu);
+            list.push(b_inv.unwrap());
+        }
+
+        let A_inv = Matrix::from_basis(list);
+
+        Some(
+            A_inv
+        )
+    }
+
+
+
+    pub fn inv_upper_triangular(&self) -> Option<Matrix<T>> {
+
+        //assert!(self.is_upper_triangular(), "matrix should be upper triangular");
+
+        if self.rows != self.columns {
+            return None;
+        }
+
+        let id: Matrix<T> = Matrix::id(self.rows);
+
+        let bs = id.into_basis();
+
+        let mut list: Vec<Vector<T>> = Vec::new();
+
+        for i in 0..bs.len() {
+            let b = &bs[i];
+            let b_inv = solve_upper_triangular(self, b);
+            if b_inv.is_none() {
+                return None;
+            }
+            list.push(b_inv.unwrap());
+        }
+
+        let A_inv = Matrix::from_basis(list);
+
+        Some(
+            A_inv
+        )
+    }
+
+
+
+    pub fn inv_lower_triangular(&self) -> Option<Matrix<T>> {
+
+        assert!(self.is_lower_triangular(), "matrix should be lower triangular");
+
+        if self.rows != self.columns {
+            return None;
+        }
+
+        let id: Matrix<T> = Matrix::id(self.rows);
+
+        let bs = id.into_basis();
+
+        let mut list: Vec<Vector<T>> = Vec::new();
+
+        for i in 0..bs.len() {
+            let b = &bs[i];
+            let b_inv = solve_lower_triangular(self, b);
+            if b_inv.is_none() {
+                return None;
+            }
+            list.push(b_inv.unwrap());
+        }
+
+        let A_inv = Matrix::from_basis(list);
+
+        Some(
+            A_inv
+        )
+    }
+
+
+
+    pub fn inv_diag(&self) -> Matrix<T> {
+
+        assert!(self.is_diag(), "inv_diag matrix should be diagonal");
+
+        assert!(self.is_square(), "inv_diag matrix should be square");
+
+        let one = T::from_f64(1.).unwrap();
+        
+        let mut A_inv: Matrix<T> = Matrix::new(self.rows, self.columns);
+
+        for i in 0..self.rows {
+            A_inv[[i, i]] = one / self[[i, i]];
+        }
+
+        A_inv
     }
 
 
@@ -467,6 +698,7 @@ impl <T: Number> Matrix<T> {
         for i in 0..columns {
             for j in 0..rows {
                 let value: f64 = rng.gen_range(-max, max);
+                let value = ( value * 10000. ).round() / 10000.;
                 A[[j,i]] = T::from_f64(value).unwrap();
             }
         }
@@ -1468,9 +1700,178 @@ mod tests {
     use rand::Rng;
     use std::{ f32::EPSILON as EP, f64::EPSILON, f64::consts::PI };
     use crate::{ core::{lu::lu, matrix::{ Matrix }}, matrix, vector };
-    use super::{ eq_eps_f64, Vector, P_compact, Number, get_optimal_depth, eq_bound_eps, multiply, mul_blocks, strassen, decompose_blocks };
+    use super::{ block_lu, eq_eps_f64, Vector, P_compact, Number, get_optimal_depth, eq_bound_eps, multiply, mul_blocks, strassen, decompose_blocks };
+
+
+
+    #[test]
+    fn block_lu_test() {
+        
+        let size = 5;
+
+        let A: Matrix<f64> = Matrix::rand(size, size, 10.);
+        
+        let lu = block_lu(&A).unwrap();
+
+        let p: Matrix<f64> = &lu.L * &lu.U;
+
+        println!("\n A is {} \n", A);
+
+        //println!("\n L is {} \n U is {} \n product {} \n", lu.L, lu.U, p);
+
+        let lu2 = A.lu();
+
+        let p2: Matrix<f64> = &lu2.L * &lu2.U;
+
+        //println!("\n L2 is {} \n U2 is {} \n p2 is {} \n", &lu2.P * &lu2.L, lu2.U, p2);
+
+        println!("\n p is {} \n p2 is {} \n diff is {} \n", p, p2, &p - &p2);
+        
+        assert!(false);
+    }
+
+
+
+    #[test]
+    fn inv_diag() {
+
+        let length: usize = 10;
+
+        let v: Vector<f64> = Vector::rand(length as u32, 100.);
+
+        let mut m: Matrix<f64> = Matrix::new(length, length);
+
+        m.set_diag(v);
+
+        let m_inv = m.inv_diag();
+
+        let p: Matrix<f64> = &m_inv * &m;
+
+        let id = Matrix::id(length);
+
+        let equal = eq_bound_eps(&id, &p);
+
+        assert!(equal, "inv_diag");
+    }
+
 
     
+    //solve upper triangular
+    #[test]
+    fn inv_upper_triangular() {
+        let size = 10;
+        let A: Matrix<f64> = Matrix::rand(size, size, 100.);
+        let lu = A.lu();
+        let U = lu.U; 
+        let id = Matrix::id(size);
+
+        println!("\n U is {} \n", U);
+
+        let U_inv = U.inv_upper_triangular().unwrap();
+
+        let p: Matrix<f64> = &U_inv * &U;
+        
+        let equal = eq_bound_eps(&id, &p);
+
+        println!("\n U_inv {} \n ID is {} \n", U_inv, p);
+
+        assert!(equal, "inv_upper_triangular");
+    }
+
+
+    
+    #[test]
+    fn inv_lower_triangular() {
+        
+        let size = 10;
+        let A: Matrix<f64> = Matrix::rand(size, size, 100.);
+        let lu = A.lu();
+        let L = lu.P * lu.L; 
+        let id = Matrix::id(size);
+
+        println!("\n L is {} \n", L);
+
+        let L_inv = L.inv_lower_triangular().unwrap();
+
+        let p: Matrix<f64> = &L_inv * &L;
+        
+        let equal = eq_bound_eps(&id, &p);
+
+        println!("\n L_inv {} \n ID is {} \n", L_inv, p);
+
+        assert!(equal, "inv_lower_triangular");
+    }
+
+
+
+    #[test]
+    fn assemble() {
+        
+        let A = matrix![i32,
+            1, 2, 3, 6, 4, 6, 2, 5, 4;
+            3, 4, 4, 4, 4, 5, 5, 5, 5;
+            3, 4, 4, 3, 3, 5, 1, 1, 5;
+            3, 4, 4, 3, 3, 5, 1, 1, 5;
+            3, 4, 4, 3, 3, 5, 1, 1, 5;
+        ];
+
+        let p = A.partition(2);
+
+        let asm = Matrix::assemble(&p);
+
+        assert_eq!(asm, A, "assemble 2: asm == A");
+
+        let p = A.partition(3);
+
+        let asm = Matrix::assemble(&p);
+
+        assert_eq!(asm, A, "assemble 3: asm == A");
+    }
+
+
+
+    #[test]
+    fn partition() {
+
+        let A = matrix![i32,
+            1, 2;
+            3, 4;
+        ];
+
+        let p = A.partition(1);
+
+        assert_eq!(p.A11.rows, 1, "p.A11.rows == 1");
+        assert_eq!(p.A12.rows, 1, "p.A12.rows == 1");
+        assert_eq!(p.A21.rows, 1, "p.A21.rows == 1");
+        assert_eq!(p.A22.rows, 1, "p.A22.rows == 1");
+
+        assert_eq!(p.A11.columns, 1, "p.A11.columns == 1");
+        assert_eq!(p.A12.columns, 1, "p.A12.columns == 1");
+        assert_eq!(p.A21.columns, 1, "p.A21.columns == 1");
+        assert_eq!(p.A22.columns, 1, "p.A22.columns == 1");
+        
+        assert_eq!(p.A11[[0, 0]], 1, "p.A11[[0, 0]] == 1");
+        assert_eq!(p.A12[[0, 0]], 2, "p.A12[[0, 0]] == 2");
+        assert_eq!(p.A21[[0, 0]], 3, "p.A21[[0, 0]] == 3");
+        assert_eq!(p.A22[[0, 0]], 4, "p.A22[[0, 0]] == 4");
+
+        let A = matrix![i32,
+            1, 2, 3, 6, 4, 6, 2, 5, 4;
+            3, 4, 4, 4, 4, 5, 5, 5, 5;
+            3, 4, 4, 3, 3, 5, 1, 1, 5;
+            3, 4, 4, 3, 3, 5, 1, 1, 5;
+            3, 4, 4, 3, 3, 5, 1, 1, 5;
+        ];
+
+        let p = A.partition(2);
+
+        println!("\n partition is \n A11 {} \n A12 {} \n A21 {} \n A22 {} \n", p.A11, p.A12, p.A21, p.A22);
+
+        assert_eq!(p.A12.rows, 2, "p.A12.rows == 2");
+        assert_eq!(p.A12.columns, 7, "p.A12.columns == 7");
+    }
+
+
 
     fn solve9() {
         let test = 50;
@@ -2102,6 +2503,23 @@ mod tests {
 
 
 
+    #[test] 
+    fn rand() {
+
+        let max = 100000.;
+
+        let mut rng = rand::thread_rng();
+        
+        let value: f64 = rng.gen_range(-max, max);
+
+        let d = ( value * 10000. ).round() / 10000.;
+
+        println!("\n value is {} | {} \n", value, d);
+
+    }
+
+
+
     #[test]
     fn rank() {
         
@@ -2132,6 +2550,49 @@ mod tests {
         println!("\n d2 is {:?} \n A2 is {} \n R is {} \n L is {} \n U is {} \n diff is {} \n d is {:?} \n P is {} \n \n", lu.d, A2, R, lu.L, lu.U, &A2 - &R, lu.d, lu.P);
         
         assert_eq!(A2.rank(), 2, "A2 - rank is 2");
+        
+        let test = 50;
+
+        for i in 1..test {
+            let max = 1.;
+
+            let A: Matrix<f64> = Matrix::rand_shape(i, max);
+            let At: Matrix<f64> = A.transpose();
+            let AtA: Matrix<f64> = &At * &A;
+            let AAt: Matrix<f64> = &A * &At;
+
+            let rank_A = A.rank();
+            let rank_AAt = AAt.rank();
+            let rank_AtA = AtA.rank();
+
+            let eq1 = rank_A == rank_AAt;
+            let eq2 = rank_A == rank_AtA;
+
+            if !eq1 {
+                println!("\n rank A {}, rank AAt {} \n", rank_A, rank_AAt);
+                println!("\n A ({}, {}) is {} \n AAt ({}, {}) {} \n", A.rows, A.columns, A, AAt.rows, AAt.columns, AAt);
+
+                let luA = A.lu();
+                let luAAt = AAt.lu();
+
+                println!("\n U A is {} \n L A is {} \n d A is {:?} \n", luA.U, luA.L, luA.d);
+                println!("\n U AAt is {} \n L AAt is {} \n d AAt is {:?} \n", luAAt.U, luAAt.L, luAAt.d);
+            }
+
+            if !eq2 {
+                println!("\n rank A {}, rank AtA {} \n", rank_A, rank_AtA);
+                println!("\n A ({}, {}) is {} \n AtA ({}, {}) {} \n", A.rows, A.columns, A, AtA.rows, AtA.columns, AtA);
+
+                let luA = A.lu();
+                let luAtA = AtA.lu();
+
+                println!("\n U A is {} \n L A is {} \n d A is {:?} \n", luA.U, luA.L, luA.d);
+                println!("\n U AtA is {} \n L AtA is {} \n d AtA is {:?} \n", luAtA.U, luAtA.L, luAtA.d);
+            }
+            
+            assert!(eq1, "rank A and rank AAt should be equivalent");
+            assert!(eq2, "rank A and rank AtA should be equivalent");
+        }
     }
 
 

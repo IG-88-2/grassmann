@@ -4,6 +4,91 @@ use super::{lu::lu, matrix::Matrix, vector::Vector};
 
 
 
+pub fn solve_lower_triangular<T:Number>(L:&Matrix<T>, b:&Vector<T>) -> Option<Vector<T>> {
+
+    let zero = T::from_f64(0.).unwrap();
+
+    let mut x = Vector::new(vec![zero; L.columns]);
+
+    for i in 0..L.rows {
+        let mut acc = b[i];
+
+        for j in 0..(i + 1) {
+            let c = L[[i, j]];
+            
+            if j == i {
+
+                if c == zero {
+                    let mut acc2 = zero;
+    
+                    for k in 0..j {
+                        acc2 += x[k] * L[[i, k]];
+                    }
+    
+                    let diff = (acc2 - b[i]).abs();
+                    
+                    if T::to_f32(&diff).unwrap().abs() < f32::EPSILON {
+                        x[i] = zero;
+                        continue;
+                    } else {
+                        return None;
+                    }
+                }
+                
+                x[i] = acc / c;
+
+            } else {
+
+                acc -= c * x[j];
+            }
+        }
+    }
+
+    Some(x)
+}
+
+
+
+pub fn solve_upper_triangular<T:Number>(U:&Matrix<T>, b:&Vector<T>) -> Option<Vector<T>> {
+
+    let zero = T::from_f64(0.).unwrap();
+
+    let mut x: Vector<T> = Vector::new(vec![zero; U.columns]);
+
+    for i in (0..U.rows).rev() {
+        let mut acc = b[i];
+        
+        let c = U[[i, i]];
+
+        for j in (i..U.columns).rev() {
+            if i == j {
+
+                if c == zero {
+                    let diff = acc.abs();
+        
+                    if T::to_f32(&diff).unwrap().abs() < f32::EPSILON {
+                        x[i] = zero;
+                        continue;
+                    } else {
+                        return None;
+                    }
+                }
+
+                x[i] = acc / c;
+
+            } else {
+
+                acc -= U[[i, j]] * x[j];
+
+            }
+        }
+    }
+
+    Some(x)
+}
+
+
+
 pub fn solve<T:Number>(b: &Vector<T>, lu: &lu<T>) -> Option<Vector<T>> {
     let zero = T::from_f64(0.).unwrap();
     let one = T::from_f64(1.).unwrap();
