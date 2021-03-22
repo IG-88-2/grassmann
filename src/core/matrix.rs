@@ -477,6 +477,25 @@ impl <T: Number> Matrix<T> {
 
 
 
+    pub fn schur_complement(p:&Partition<T>) -> Option<Matrix<T>> {
+
+        let A11_lu = p.A11.lu();
+
+        let A11_inv = p.A11.inv(&A11_lu);
+        
+        if A11_inv.is_none() {
+            return None;
+        }
+
+        let A11_inv = A11_inv.unwrap();
+        
+        let result: Matrix<T> = &(&p.A21 * &A11_inv) * &p.A12;
+        
+        Some(result)
+    }
+
+
+
     pub fn inv_upper_triangular(&self) -> Option<Matrix<T>> {
 
         //assert!(self.is_upper_triangular(), "matrix should be upper triangular");
@@ -706,6 +725,10 @@ impl <T: Number> Matrix<T> {
         A
     }
 
+
+    pub fn change_basis() {
+
+    }
 
 
     pub fn rand_shape(max_side: usize, max:f64) -> Matrix<T> {
@@ -1699,8 +1722,26 @@ mod tests {
     use num::Integer;
     use rand::Rng;
     use std::{ f32::EPSILON as EP, f64::EPSILON, f64::consts::PI };
-    use crate::{ core::{lu::lu, matrix::{ Matrix }}, matrix, vector };
+    use crate::{ core::{lu::{block_lu_threads, lu}, matrix::{ Matrix }}, matrix, vector };
     use super::{ block_lu, eq_eps_f64, Vector, P_compact, Number, get_optimal_depth, eq_bound_eps, multiply, mul_blocks, strassen, decompose_blocks };
+
+
+
+    #[test]
+    fn block_lu_threads_test() {
+
+        let size = 6;
+
+        let A: Matrix<f64> = Matrix::rand(size, size, 10.);
+        
+        let lu = block_lu_threads(&A, 2);
+
+        let lu = lu.unwrap();
+
+        println!("\n test L {} \n test U {} \n", lu.L, lu.U);
+
+        assert!(false);
+    }
 
 
 
@@ -1726,8 +1767,6 @@ mod tests {
         //println!("\n L2 is {} \n U2 is {} \n p2 is {} \n", &lu2.P * &lu2.L, lu2.U, p2);
 
         println!("\n p is {} \n p2 is {} \n diff is {} \n", p, p2, &p - &p2);
-        
-        assert!(false);
     }
 
 
