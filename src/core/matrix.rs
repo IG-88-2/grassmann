@@ -33,7 +33,7 @@ use rand::Rng;
 use num_traits::{Float, Num, NumAssignOps, NumOps, PrimInt, Signed, cast, identities};
 use web_sys::Event;
 use crate::{Number, vector, workers::Workers};
-use super::{lu::{block_lu, lu, lu_v2}, matrix3::Matrix3, 
+use super::{lu::{block_lu, block_lu_threads_v2, lu, lu_v2}, matrix3::Matrix3, 
 matrix4::Matrix4, multiply::{ multiply_threads, strassen, mul_blocks, get_optimal_depth, decompose_blocks }, 
 solve::{solve_upper_triangular, solve, solve_lower_triangular}, utils::eq_eps_f64, vector::Vector};
 
@@ -332,10 +332,11 @@ impl <T: Number> Matrix<T> {
 
 
 
-    pub fn partition(&self, r: usize) -> Partition<T> {
-
-        assert!(r < self.columns, "r should be less than columns");
-        assert!(r < self.rows, "r should be less than rows");
+    pub fn partition(&self, r: usize) -> Option<Partition<T>> {
+        
+        if r >= self.columns || r >= self.rows {
+            return None;
+        }
 
         //A11 r x r
         //A12 r x (n - r)
@@ -371,12 +372,14 @@ impl <T: Number> Matrix<T> {
             }
         }
 
-        Partition {
-            A11,
-            A12,
-            A21,
-            A22
-        }
+        Some(
+            Partition {
+                A11,
+                A12,
+                A21,
+                A22
+            }
+        )
     }
 
 
@@ -1722,7 +1725,7 @@ mod tests {
     use num::Integer;
     use rand::Rng;
     use std::{ f32::EPSILON as EP, f64::EPSILON, f64::consts::PI };
-    use crate::{ core::{lu::{block_lu_threads, lu}, matrix::{ Matrix }}, matrix, vector };
+    use crate::{ core::{lu::{block_lu_threads, block_lu_threads_v2, lu}, matrix::{ Matrix }}, matrix, vector };
     use super::{ block_lu, eq_eps_f64, Vector, P_compact, Number, get_optimal_depth, eq_bound_eps, multiply, mul_blocks, strassen, decompose_blocks };
 
 
@@ -1734,11 +1737,15 @@ mod tests {
 
         let A: Matrix<f64> = Matrix::rand(size, size, 10.);
         
-        let lu = block_lu_threads(&A, 2);
+        let lu = block_lu_threads_v2(&A, 1);
 
         let lu = lu.unwrap();
 
-        println!("\n test L {} \n test U {} \n", lu.L, lu.U);
+        let p: Matrix<f64> = &lu.L * &lu.U;
+
+        let diff = &A - &p;
+
+        println!("\n test A {} \n test L {} \n test U {} \n product {} \n diff {} \n", A, lu.L, lu.U, p, diff);
 
         assert!(false);
     }
@@ -1854,13 +1861,13 @@ mod tests {
             3, 4, 4, 3, 3, 5, 1, 1, 5;
         ];
 
-        let p = A.partition(2);
+        let p = A.partition(2).unwrap();
 
         let asm = Matrix::assemble(&p);
 
         assert_eq!(asm, A, "assemble 2: asm == A");
 
-        let p = A.partition(3);
+        let p = A.partition(3).unwrap();
 
         let asm = Matrix::assemble(&p);
 
@@ -1877,7 +1884,7 @@ mod tests {
             3, 4;
         ];
 
-        let p = A.partition(1);
+        let p = A.partition(1).unwrap();
 
         assert_eq!(p.A11.rows, 1, "p.A11.rows == 1");
         assert_eq!(p.A12.rows, 1, "p.A12.rows == 1");
@@ -1902,7 +1909,7 @@ mod tests {
             3, 4, 4, 3, 3, 5, 1, 1, 5;
         ];
 
-        let p = A.partition(2);
+        let p = A.partition(2).unwrap();
 
         println!("\n partition is \n A11 {} \n A12 {} \n A21 {} \n A22 {} \n", p.A11, p.A12, p.A21, p.A22);
 

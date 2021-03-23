@@ -106,6 +106,153 @@ fn equilibrate <T: Number> (U:&mut Matrix<T>) -> (Matrix<T>, Matrix<T>) {
 
 
 
+pub fn block_lu_threads_v2<T: Number>(A: &Matrix<T>, r: usize) -> Option<lu<T>>   {
+
+    let mut L: Matrix<T> = Matrix::new(A.rows, A.rows); 
+    let mut U: Matrix<T> = Matrix::new(A.rows, A.columns); 
+    let mut P: Matrix<T> = Matrix::id(L.rows);
+
+    let mut A = A.clone();
+    let mut ctr = 0;
+
+    loop {
+        
+        //println!("\n ({}) A is {} \n", ctr, A);
+
+        let p = A.partition(r);
+
+        if p.is_some() {
+            let p = p.unwrap();
+            let c = Matrix::schur_complement(&p);
+
+            if c.is_none() {
+               return None;
+            }
+    
+            let c = c.unwrap();
+            
+            let lu = lu_v2(&p.A11, false, false);
+            
+            if lu.is_none() {
+               return None;
+            }
+
+            let lu = lu.unwrap();
+            
+            let L11: Matrix<T> = lu.L;
+            let U11: Matrix<T> = lu.U;
+            
+            let L11_inv = L11.inv_lower_triangular();
+
+            if L11_inv.is_none() {
+               return None;
+            }
+
+            let L11_inv = L11_inv.unwrap();
+            let U11_inv = U11.inv_upper_triangular();
+
+            if U11_inv.is_none() {
+               return None;
+            }
+
+            let U11_inv = U11_inv.unwrap();
+
+            let s = ctr * r;
+            
+            let L11: Matrix<T> = L11;
+            let U11: Matrix<T> = U11;
+            let L21: Matrix<T> = &p.A21 * &U11_inv;
+            let U12: Matrix<T> = &L11_inv * &p.A12;
+
+            //println!("\n |{}| L11 {} \n U11 {} \n", ctr, L11, U11);
+
+            //println!("\n |{}| L21 {} \n U12 {} \n", ctr, L21, U12);
+            
+            /*
+            L11 0       U11 U12
+            L21 L22       0 U22
+            
+            A11 A12 A13    L11 0   0       U11 U12 U13
+            A21 A22 A23    L21 L22 0       0   U22 U23
+            A31 A32 A33    L31 L32 L33     0   0   U33    
+            */
+            
+            for j in 0..L11.rows {
+                for k in 0..L11.columns {
+                    L[[s + j, s + k]] = L11[[j, k]];
+                }
+            }
+
+            for j in 0..U11.rows {
+                for k in 0..U11.columns {
+                    U[[s + j, s + k]] = U11[[j, k]];
+                }
+            }
+            
+            for j in 0..L21.rows {
+                for k in 0..L21.columns {
+                    L[[s + j + r, s + k]] = L21[[j, k]];
+                }
+            }
+            
+            for j in 0..U12.rows {
+                for k in 0..U12.columns {
+                    U[[s + j, s + k + r]] = U12[[j, k]];
+                }
+            }
+            
+            A = p.A22 - c;
+            
+        } else {
+            
+            let lu = lu_v2(&A, false, false);
+            
+            if lu.is_none() {
+                return None;
+            }
+
+            let lu = lu.unwrap();
+
+            let s = ctr * r;
+
+            for j in 0..lu.L.rows {
+                for k in 0..lu.L.columns {
+                    L[[s + j, s + k]] = lu.L[[j, k]];
+                }
+            }
+
+            for j in 0..lu.U.rows {
+                for k in 0..lu.U.columns {
+                    U[[s + j, s + k]] = lu.U[[j, k]];
+                }
+            }
+
+            break;
+        }
+
+        ctr += 1;
+
+        println!("\n ({}) U is {} \n", ctr, U);
+
+        println!("\n ({}) L is {} \n", ctr, L);
+    }
+
+    println!("\n ({}) U is {} \n", ctr, U);
+
+    println!("\n ({}) L is {} \n", ctr, L);
+
+    let result = lu {
+        L,
+        U,
+        P,
+        d: Vec::new()
+    };
+
+    Some(result)
+}
+
+
+
 pub fn block_lu_threads<T: Number>(A: &Matrix<T>, r: usize) -> Option<lu<T>>   {
 
     if r >= A.rows {
@@ -118,7 +265,7 @@ pub fn block_lu_threads<T: Number>(A: &Matrix<T>, r: usize) -> Option<lu<T>>   {
     let mut U: Matrix<T> = Matrix::new(A.rows, A.columns); 
     let mut P: Matrix<T> = Matrix::id(L.rows);
 
-    let mut p = A.partition(r);
+    let mut p = A.partition(r).unwrap();
 
     let steps = A.rows / r;
     
@@ -129,13 +276,11 @@ pub fn block_lu_threads<T: Number>(A: &Matrix<T>, r: usize) -> Option<lu<T>>   {
     for i in 0..steps {
         
         let offset = r * i;
-
-        let asmb = Matrix::assemble(&p);
-
-        println!("\n A' ({},{}) is {} \n", asmb.rows, asmb.columns, asmb);
-        println!("\n step {}, offset {} \n", i, offset);
-        println!("\n current L {} \n", L);
-        println!("\n current U {} \n", U);
+        
+        //println!("\n A' ({},{}) is {} \n", asmb.rows, asmb.columns, asmb);
+        //println!("\n step {}, offset {} \n", i, offset);
+        //println!("\n current L {} \n", L);
+        //println!("\n current U {} \n", U);
 
         let A11_lu = lu_v2(&p.A11, false, false).unwrap();
         let L11: Matrix<T> = A11_lu.L;
@@ -181,10 +326,9 @@ pub fn block_lu_threads<T: Number>(A: &Matrix<T>, r: usize) -> Option<lu<T>>   {
             }
         }
         
-        if r <= next.columns && r <= next.rows {
-
-            p = next.partition(r);
-
+        if r < next.columns && r < next.rows {
+            println!("\n ({}) next is {} \n", i, next);
+            p = next.partition(r).unwrap();
         } else {
 
             let lu = next.lu();
@@ -229,7 +373,7 @@ pub fn block_lu<T: Number>(A: &Matrix<T>) -> Option<lu<T>> {
 
     } else {
 
-        let p = A.partition(r);
+        let p = A.partition(r).unwrap();
         
         let lu_A11 = lu_v2(&p.A11, false, false);
 
