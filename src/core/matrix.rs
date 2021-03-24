@@ -46,7 +46,9 @@ workers bounded by hardware concurrency
 reuse workers
 spread available work through workers, establish queue
 */
-
+//monte carlo
+//kalman filter
+//spectral decomposition
 //mul
 //mul matrix vector
 //rref
@@ -497,6 +499,44 @@ impl <T: Number> Matrix<T> {
         Some(result)
     }
 
+    
+
+    pub fn cholesky(&self) -> Option<Matrix<T>> {
+
+        let zero = T::from_f64(0.).unwrap();
+
+        let mut L = Matrix::new(self.rows, self.columns);
+
+        for i in 0..self.rows {
+
+            for j in i..self.columns {
+
+                let mut s = self[[i, j]];
+
+                for k in 0..i {
+                    s -= L[[k, i]] * L[[k, j]]; 
+                }
+                
+                if i == j {
+                    
+                    if s <= zero {
+                        return None;
+                    }
+                    
+                    let r = T::to_f64(&s).unwrap().sqrt();
+
+                    L[[i, j]] = T::from_f64(r).unwrap();
+                    
+                } else {
+                    
+                    L[[i, j]] = s / L[[i, i]];
+                }
+            }
+        }
+
+        Some(L)
+    }
+
 
 
     pub fn inv_upper_triangular(&self) -> Option<Matrix<T>> {
@@ -720,7 +760,7 @@ impl <T: Number> Matrix<T> {
         for i in 0..columns {
             for j in 0..rows {
                 let value: f64 = rng.gen_range(-max, max);
-                let value = ( value * 10000. ).round() / 10000.;
+                let value = ( value * 100. ).round() / 100.;
                 A[[j,i]] = T::from_f64(value).unwrap();
             }
         }
@@ -1731,6 +1771,54 @@ mod tests {
 
 
     #[test]
+    fn cholesky_test() {
+
+        let test = 20;
+
+        for i in 2..test {
+            let size = i;
+
+            let mut A: Matrix<f64> = Matrix::rand(size, size, 1.);
+    
+            let f = move |x: f64| { if x < 0. { -1. * x } else { x } };
+    
+            let mut id: Matrix<f64> = Matrix::id(size);
+    
+            id = id * 100.;
+    
+            A.apply(&f);
+    
+            A = A + id;
+    
+            let mut At: Matrix<f64> = A.transpose();
+    
+            let mut A: Matrix<f64> = &At * &A;
+    
+            let mut L = A.cholesky();
+            
+            //println!("\n A ({},{}) is {} \n", A.rows, A.columns, A);
+            
+            if L.is_none() {
+    
+                println!("no Cholesky for you!");
+    
+            } else {
+    
+                let L = L.unwrap();
+                
+                let Lt = L.transpose();
+    
+                let G = &Lt * &L;
+    
+                assert!(eq_bound_eps(&A, &G), "A and G should be equivalent");
+            }
+        }
+        
+    }
+
+
+
+    //#[test]
     fn block_lu_threads_test() {
 
         let size = 6;
@@ -1752,7 +1840,7 @@ mod tests {
 
 
 
-    #[test]
+    //#[test]
     fn block_lu_test() {
         
         let size = 5;

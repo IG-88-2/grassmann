@@ -440,7 +440,10 @@ pub fn block_lu<T: Number>(A: &Matrix<T>) -> Option<lu<T>> {
 }
 
 
-
+//TODO separate for rectangular and square
+//TODO solve multiple rhs at once with solve
+//TODO write to A
+//TODO statically permutable matrix
 pub fn lu_v2<T: Number>(A: &Matrix<T>, eq:bool, pp: bool) -> Option<lu<T>> {
 
     let steps = min(A.rows, A.columns);
