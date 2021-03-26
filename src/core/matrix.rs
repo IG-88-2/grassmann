@@ -949,6 +949,69 @@ impl <T: Number> Matrix<T> {
 
 
 
+    pub fn house(&self) {
+        
+        let id: Matrix<T> = Matrix::id(self.rows);
+
+        let id_bs = id.into_basis();
+
+        let id1 = id_bs[0].clone();
+        
+        let bs = self.into_basis();
+
+        let x = &bs[0];
+
+        let c = x.length();
+
+        let ce = id1 * T::from_f64(c).unwrap();
+
+        println!("\n ce is {} \n", ce);
+
+        let s = T::from_f64(1.).unwrap(); //T::from_f64(1./2.).unwrap(); 
+
+        let v: Vector<T> = x - &ce;
+
+        let mut v: Vector<T> = v * s;
+
+        v.normalize();
+
+        let u: Matrix<T> = v.clone().into();
+
+        println!("\n u is {} \n", u);
+        
+        //P = I - 2 uut, ut * u = 1
+
+        let I: Matrix<T> = Matrix::id(v.data.len());
+
+        let ut = u.transpose();
+
+        let uut = &u * &ut; 
+
+        println!("\n uut is {} \n", uut);
+
+        let utu = &ut * &u;
+        
+        // utu_s = utu[[0, 0]];
+
+        //println!("\n utu is {:?} \n", utu_s);
+        
+        let uut_s: Matrix<T> = uut * T::from_f64(-2.).unwrap(); //(T::from_f64(1.).unwrap() / utu_s);
+
+        println!("\n uut_s is {} \n", uut_s);
+        
+        let P = &I + &uut_s;
+
+        let Pt = P.transpose();
+
+        println!("\n P is {} \n Pt is {} \n P rank is {} \n Pt rank is {} \n", P, Pt, P.rank(), Pt.rank()); // rank is 3 ?
+
+        println!("\n Px is {} \n Ptx is {} \n PtP is {} \n PPt is {} \n", &P * x, &Pt * x, &P * &P, &P * &Pt);
+
+
+    }
+
+
+
     pub fn is_diagonally_dominant(&self) -> bool {
 
         if self.rows != self.columns {
@@ -1767,6 +1830,21 @@ mod tests {
     use std::{ f32::EPSILON as EP, f64::EPSILON, f64::consts::PI };
     use crate::{ core::{lu::{block_lu_threads, block_lu_threads_v2, lu}, matrix::{ Matrix }}, matrix, vector };
     use super::{ block_lu, eq_eps_f64, Vector, P_compact, Number, get_optimal_depth, eq_bound_eps, multiply, mul_blocks, strassen, decompose_blocks };
+
+
+
+    #[test]
+    fn house_test() {
+
+        let size = 4;
+
+        let mut A: Matrix<f64> = Matrix::rand(size, size, 5.);
+
+        A.house();
+
+        assert!(false);
+
+    }
 
 
 

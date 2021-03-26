@@ -178,7 +178,10 @@ fn mul<T:Number>(a:&Vector<T>, b:&Vector<T>) -> Option<Float> {
 
 
 fn scale<T:Number>(a:&Vector<T>, s:T) -> Vector<T> {
-    let mut v = vector![];
+    
+    let zero = T::from_f64(0.).unwrap();
+
+    let mut v = Vector::new(vec![zero; a.data.len()]); //TODO vector![];
 
     for i in 0..a.data.len() {
         v[i] = a[i] * s; 
