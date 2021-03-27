@@ -950,63 +950,36 @@ impl <T: Number> Matrix<T> {
 
 
     pub fn house(&self) {
-        
-        let id: Matrix<T> = Matrix::id(self.rows);
 
-        let id_bs = id.into_basis();
+        let basis = self.into_basis();
+        let zero = T::from_f64(0.).unwrap();
 
-        let id1 = id_bs[0].clone();
-        
-        let bs = self.into_basis();
+        for i in 0..(self.columns - 1) {
+            let next = &basis[i];
+            let mut x: Vector<T> = Vector::new(vec![]);
 
-        let x = &bs[0];
+            for j in i..self.rows {
+                x.data.push(next[j]);
+            }
+            
+            let c = x.length();
 
-        let c = x.length();
+            let id = Matrix::id(self.rows - i).into_basis().remove(0);
+            let ce = id * T::from_f64(c).unwrap();
+            let mut v: Vector<T> = &x - &ce;
 
-        let ce = id1 * T::from_f64(c).unwrap();
+            v.normalize();
 
-        println!("\n ce is {} \n", ce);
-
-        let s = T::from_f64(1.).unwrap(); //T::from_f64(1./2.).unwrap(); 
-
-        let v: Vector<T> = x - &ce;
-
-        let mut v: Vector<T> = v * s;
-
-        v.normalize();
-
-        let u: Matrix<T> = v.clone().into();
-
-        println!("\n u is {} \n", u);
-        
-        //P = I - 2 uut, ut * u = 1
-
-        let I: Matrix<T> = Matrix::id(v.data.len());
-
-        let ut = u.transpose();
-
-        let uut = &u * &ut; 
-
-        println!("\n uut is {} \n", uut);
-
-        let utu = &ut * &u;
-        
-        // utu_s = utu[[0, 0]];
-
-        //println!("\n utu is {:?} \n", utu_s);
-        
-        let uut_s: Matrix<T> = uut * T::from_f64(-2.).unwrap(); //(T::from_f64(1.).unwrap() / utu_s);
-
-        println!("\n uut_s is {} \n", uut_s);
-        
-        let P = &I + &uut_s;
-
-        let Pt = P.transpose();
-
-        println!("\n P is {} \n Pt is {} \n P rank is {} \n Pt rank is {} \n", P, Pt, P.rank(), Pt.rank()); // rank is 3 ?
-
-        println!("\n Px is {} \n Ptx is {} \n PtP is {} \n PPt is {} \n", &P * x, &Pt * x, &P * &P, &P * &Pt);
-
+            let I: Matrix<T> = Matrix::id(self.rows);
+            let u: Matrix<T> = v.into();
+            let ut: Matrix<T> = u.transpose();
+            let uut: Matrix<T> = &u * &ut; 
+            //TODO add with offset
+            let P: Matrix<T> = &I + &(uut * T::from_f64(-2.).unwrap());
+            
+            println!("\n P is {} \n", P);
+            println!("\n Px is {} \n", &P * next);
+        }
 
     }
 
