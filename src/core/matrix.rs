@@ -33,7 +33,8 @@ use rand::Rng;
 use num_traits::{Float, Num, NumAssignOps, NumOps, PrimInt, Signed, cast, identities};
 use web_sys::Event;
 use crate::{Number, vector, workers::Workers};
-use super::{lu::{block_lu, block_lu_threads_v2, lu, lu_v2}, matrix3::Matrix3, matrix4::Matrix4, multiply::{ multiply_threads, strassen, mul_blocks, get_optimal_depth, decompose_blocks }, qr::qr, solve::{solve_upper_triangular, solve, solve_lower_triangular}, utils::eq_eps_f64, vector::Vector};
+use super::{lu::{block_lu, block_lu_threads_v2, lu, lu_v2}, matrix3::Matrix3, matrix4::Matrix4, multiply::{ multiply_threads, strassen, mul_blocks, get_optimal_depth, decompose_blocks }, 
+qr::{qr, apply_q_R, form_Q, house_qr}, solve::{solve_upper_triangular, solve, solve_lower_triangular}, utils::eq_eps_f64, vector::Vector};
 
 /*
 TODO 
@@ -948,9 +949,9 @@ impl <T: Number> Matrix<T> {
 
     
     pub fn qr(&self) -> qr<T> {
-
-        qr(self)
         
+        house_qr(self)
+
     }
 
 
@@ -1778,21 +1779,40 @@ mod tests {
     use rand::Rng;
     use std::{ f32::EPSILON as EP, f64::EPSILON, f64::consts::PI };
     use crate::{ core::{lu::{block_lu_threads, block_lu_threads_v2, lu}, matrix::{ Matrix }}, matrix, vector };
-    use super::{ block_lu, eq_eps_f64, Vector, P_compact, Number, get_optimal_depth, eq_bound_eps, multiply, mul_blocks, strassen, decompose_blocks };
+    use super::{ apply_q_R, form_Q, block_lu, eq_eps_f64, Vector, P_compact, Number, get_optimal_depth, eq_bound_eps, multiply, mul_blocks, strassen, decompose_blocks };
 
 
 
     #[test]
-    fn house_test() {
+    fn qr_test() {
 
         let size = 4;
 
         let mut A: Matrix<f64> = Matrix::rand(size, size, 5.);
 
-        A.qr();
+        let mut qr = A.qr();
 
+        let Q = form_Q(&qr.q, false);
+
+        let Qt = form_Q(&qr.q, true);
+        
+        qr.Q = Some(Q);
+ 
+        qr.Qt = Some(Qt);
+
+        println!("\n qr: A is {} \n", A);
+
+        let QR: Matrix<f64> = &qr.Q.unwrap() * &qr.R;
+
+        let mut QR2: Matrix<f64> = apply_q_R(&qr.R, &qr.q, false);
+
+        println!("\n qr: QR is {} \n", QR);
+
+        println!("\n qr: QR2 is {} \n", QR2);
+
+        println!("\n qr: diff is {} \n", &A - &QR);
+        
         assert!(false);
-
     }
 
 

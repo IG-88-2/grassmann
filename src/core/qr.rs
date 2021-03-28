@@ -6,31 +6,118 @@ use super::{vector::Vector};
 
 #[derive(Clone, Debug)]
 pub struct qr <T: Number> {
-    pub Q: Matrix<T>,
+    pub Q: Option<Matrix<T>>,
+    pub Qt: Option<Matrix<T>>,
     pub R: Matrix<T>,
     pub q: Vec<Vector<T>>
 }
 
 
-//singular ???
-//rectangular ???
-pub fn qr<T: Number>(M:&Matrix<T>) -> qr<T> {
+
+pub fn form_Q<T: Number>(q: &Vec<Vector<T>>, t: bool) -> Matrix<T> {
+    
+    let l = q.len();
+
+    let mut Q: Matrix<T> = Matrix::id(l + 1);
+    
+    for i in 0..l {
+        let v = &q[i];
+        let I: Matrix<T> = Matrix::id(l + 1);
+        let u: Matrix<T> = v.clone().into();
+        let ut: Matrix<T> = u.transpose();
+        let uut: Matrix<T> = &u * &ut;
+        let P: Matrix<T> = add(&I, &(uut * T::from_f64(-2.).unwrap()), i);
+        
+        if t {
+
+            Q = &P * &Q;
+            
+        } else {
+
+            Q = &Q * &P;
+        }
+    }
+    
+    Q
+}
+
+
+
+pub fn apply_q_b() {
+
+}
+
+
+
+pub fn apply_q_R<T: Number>(R: &Matrix<T>, q:&Vec<Vector<T>>, t: bool) -> Matrix<T> {
+
+    let mut QR = R.clone();
 
     let zero = T::from_f64(0.).unwrap();
+    
+    let mut i: i32 = (R.columns - 2) as i32;
+    
+    if t {
+        i = 0;
+    }
+
+    loop {
+        
+        let z = i as usize;
+
+        let size = R.rows - z;
+        
+        let v = &q[z];
+        
+        for j in z..R.columns {
+            
+            let mut x = Vector::new(vec![zero; size]);
+            
+            for k in z..R.rows {
+                x[k - z] = QR[[k, j]];
+            }
+
+            let s = T::from_f64( 2. * (v * &x) ).unwrap();
+
+            let u = v * s;
+            
+            for k in z..R.rows {
+                QR[[k, j]] -= u[k - z];
+            }
+        }
+
+        if t { i += 1; } else { i -= 1; }
+        
+        if i > (R.columns - 2) as i32 || i < 0 {
+            break;
+        }
+    }
+
+    QR
+}
+
+
+
+pub fn house_qr<T: Number>(A:&Matrix<T>) -> qr<T> {
+
+    let zero = T::from_f64(0.).unwrap();
+
     let one = T::from_f64(1.).unwrap();
 
-    let mut A = M.clone();
-    let mut Q: Matrix<T> = Matrix::id(M.rows);
+    let mut R = A.clone();
+
     let mut q: Vec<Vector<T>> = Vec::new();
 
-    for i in 0..(M.columns - 1) {
 
-        let size = M.rows - i;
+
+    for i in 0..(A.columns - 1) {
+
+        let size = A.rows - i;
         
         let mut x = Vector::new(vec![zero; size]);
         
-        for j in i..M.rows {
-            x[j - i] = A[[j, i]];
+        for j in i..A.rows {
+            x[j - i] = R[[j, i]];
         }
         
         let c = x.length();
@@ -46,52 +133,31 @@ pub fn qr<T: Number>(M:&Matrix<T>) -> qr<T> {
         v.normalize();
 
         q.push(v.clone());
-        
-        let I: Matrix<T> = Matrix::id(M.rows);
-        let u: Matrix<T> = v.clone().into();
-        let ut: Matrix<T> = u.transpose();
-        let uut: Matrix<T> = &u * &ut;
-        let P: Matrix<T> = add(&I, &(uut * T::from_f64(-2.).unwrap()), i);
 
-        Q = &P * &Q;
-        
-        for j in i..M.columns {
+
+
+        for j in i..A.columns {
             
             let mut x = Vector::new(vec![zero; size]);
             
-            for k in i..M.rows {
-                x[k - i] = A[[k, j]];
+            for k in i..A.rows {
+                x[k - i] = R[[k, j]];
             }
 
             let s = T::from_f64( 2. * (&v * &x) ).unwrap();
 
             let u = &v * s;
-
-            for k in i..M.rows {
-                A[[k, j]] -= u[k - i];
+            
+            for k in i..A.rows {
+                R[[k, j]] -= u[k - i];
             }
         }
     }
 
-    let Qt = Q.transpose();
-
-    println!("\n Q is {} \n", Q);
-
-    println!("\n QtQ is {} \n", &Qt * &Q);
-
-    println!("\n R is {} \n", A);
-    
-
-
-    println!("\n A1 is {} \n", M);
-    
-    println!("\n A2 is {} \n", &Qt * &A);
-
-    println!("\n diff is {} \n", M - &(&Qt * &A));
-
     qr {
-        Q,
-        R: A,
+        Q: None,
+        Qt: None,
+        R,
         q
     }
 }
