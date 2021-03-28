@@ -33,9 +33,7 @@ use rand::Rng;
 use num_traits::{Float, Num, NumAssignOps, NumOps, PrimInt, Signed, cast, identities};
 use web_sys::Event;
 use crate::{Number, vector, workers::Workers};
-use super::{lu::{block_lu, block_lu_threads_v2, lu, lu_v2}, matrix3::Matrix3, 
-matrix4::Matrix4, multiply::{ multiply_threads, strassen, mul_blocks, get_optimal_depth, decompose_blocks }, 
-solve::{solve_upper_triangular, solve, solve_lower_triangular}, utils::eq_eps_f64, vector::Vector};
+use super::{lu::{block_lu, block_lu_threads_v2, lu, lu_v2}, matrix3::Matrix3, matrix4::Matrix4, multiply::{ multiply_threads, strassen, mul_blocks, get_optimal_depth, decompose_blocks }, qr::qr, solve::{solve_upper_triangular, solve, solve_lower_triangular}, utils::eq_eps_f64, vector::Vector};
 
 /*
 TODO 
@@ -948,39 +946,11 @@ impl <T: Number> Matrix<T> {
     }
 
 
+    
+    pub fn qr(&self) -> qr<T> {
 
-    pub fn house(&self) {
-
-        let basis = self.into_basis();
-        let zero = T::from_f64(0.).unwrap();
-
-        for i in 0..(self.columns - 1) {
-            let next = &basis[i];
-            let mut x: Vector<T> = Vector::new(vec![]);
-
-            for j in i..self.rows {
-                x.data.push(next[j]);
-            }
-            
-            let c = x.length();
-
-            let id = Matrix::id(self.rows - i).into_basis().remove(0);
-            let ce = id * T::from_f64(c).unwrap();
-            let mut v: Vector<T> = &x - &ce;
-
-            v.normalize();
-
-            let I: Matrix<T> = Matrix::id(self.rows);
-            let u: Matrix<T> = v.into();
-            let ut: Matrix<T> = u.transpose();
-            let uut: Matrix<T> = &u * &ut; 
-            //TODO add with offset
-            let P: Matrix<T> = &I + &(uut * T::from_f64(-2.).unwrap());
-            
-            println!("\n P is {} \n", P);
-            println!("\n Px is {} \n", &P * next);
-        }
-
+        qr(self)
+        
     }
 
 
@@ -1220,19 +1190,25 @@ impl <T: Number> Matrix<T> {
 
 
 
-fn add <T: Number>(A: &Matrix<T>, B: &Matrix<T>, dim_a:bool) -> Matrix<T> {
+pub fn add <T: Number>(A: &Matrix<T>, B: &Matrix<T>, offset:usize) -> Matrix<T> {
     
     assert!(A.rows >= B.rows, "rows do not match");
 
     assert!(A.columns >= B.columns, "columns do not match");
-
-    let rows = if dim_a { A.rows } else { B.rows };
-    let columns = if dim_a { A.columns } else { B.columns };
-    let mut C: Matrix<T> = Matrix::new(rows, columns);
     
+    let mut C: Matrix<T> = Matrix::new(A.rows, A.columns);
+    
+    if offset > 0 {
+        for i in 0..offset {
+            for j in 0..offset {
+                C[[i, j]] = A[[i,j]];
+            }
+        }
+    }
+
     for i in 0..B.rows {
         for j in 0..B.columns {
-            C[[i,j]] = A[[i,j]] + B[[i,j]];
+            C[[i + offset, j + offset]] = A[[i,j]] + B[[i,j]];
         }
     }
     
@@ -1442,7 +1418,7 @@ impl <T: Number> Add for &Matrix<T> {
     type Output = Matrix<T>;
 
     fn add(self, b:&Matrix<T>) -> Matrix<T> {
-        add(&self, b, true)
+        add(&self, b, 0)
     }
 }
 
@@ -1452,7 +1428,7 @@ impl <T: Number> Add for Matrix<T> {
     type Output = Matrix<T>;
 
     fn add(self, b:Matrix<T>) -> Matrix<T> {
-        add(&self, &b, true)
+        add(&self, &b, 0)
     }
 }
 
@@ -1770,7 +1746,7 @@ pub async fn test_multiplication(hc: f64) {
 
         let mut r3: Matrix<f64> = Matrix::new(A.rows, B.columns);
 
-        let r: Matrix<f64> = add(&r, &r3, false);
+        let r: Matrix<f64> = add(&r, &r3, 0); //TODO ? dim B
         
         if !(r == r2) {
             let diff: Matrix<f64> = &r - &r2;
@@ -1813,7 +1789,7 @@ mod tests {
 
         let mut A: Matrix<f64> = Matrix::rand(size, size, 5.);
 
-        A.house();
+        A.qr();
 
         assert!(false);
 
