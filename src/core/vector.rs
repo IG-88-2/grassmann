@@ -84,7 +84,9 @@ impl <T:Number> Vector <T> {
 
         let l = self.length();
 
-        *self /= T::from_f64(l).unwrap();
+        if l != 0. {
+            *self /= T::from_f64(l).unwrap();
+        }
     }
     
 

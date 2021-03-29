@@ -1916,11 +1916,37 @@ mod tests {
 
 
 
-    #[test]
+    //#[test]
     fn qr_test2() {
 
         //rows > cols
+        let rows = 4;
+        let columns = 3;
+        let max = 5.;
+        let mut A: Matrix<f64> = Matrix::rand(rows, columns, max);
+        let mut qr = A.qr();
+
+        let f = move |x: f64| {
+            let c = (2. as f64).powf(32.);
+            (x * c).round() / c
+        };
         
+        qr.R.apply(&f);
+        
+        println!("\n A is {}, rank is {} \n", A, A.rank());
+        println!("\n R is {} \n", qr.R);
+        println!("\n q({}) is {:?} \n", qr.q.len(), qr.q);
+
+        let Q: Matrix<f64> = form_Q(&qr.q, A.rows, false);
+        let Qt: Matrix<f64> = Q.transpose(); //form_Q(&qr.q, true);
+        let QR: Matrix<f64> = &Q * &qr.R;
+        let mut QR2: Matrix<f64> = apply_q_R(&qr.R, &qr.q, false);
+
+        println!("\n Q is {} \n", Q);
+        println!("\n QR is {} \n", QR);
+        println!("\n QR2 is {} \n", QR2);
+
+        //assert!(false);
     }
 
 
@@ -1928,48 +1954,85 @@ mod tests {
     #[test]
     fn qr_test1() {
         
-        let test = 25;
+        let test = 15;
         
         let mut rng = rand::thread_rng();
         
         for i in 2..test {
-            qr_test(i, true);
-            qr_test(i, false);
+            qr_test(i, 0);
+            qr_test(i, 1);
+            qr_test(i, 2);
+            qr_test(i, 3);
         }
     }
+    
+    /*
+    let mut A: Matrix<f64> = matrix![f64,
+        4.170135353701342, 4.159440583347017, 4.6225162967529005, 1.1726890554559144, 6.331669993610134;
+        0.7974108319784967, 2.375689184266049, 4.84964762474478, 4.521449225408746, 4.962079890504513;
+        0.5439641762173542, 1.817940743040296, 3.6336675618835805, 3.414032225665137, 3.7198101879895487;
+        1.6423891351241626, 3.0429564173011823, 2.096780164314288, 0.3219767796795381, 3.2723995121565586;
+        0.188801931496696, 0.7099348675059647, 3.1602290293714717, 3.4726527316333176, 2.81659110265371;
+    ];
+    */
 
-
-
-    fn qr_test(i:usize, s:bool) {
+    fn qr_test(i:usize, case:u32) {
 
         let mut rng = rand::thread_rng();
-        
-        let size = i;
-        let max = 5.;
-        let mut n = 0;
-        let mut A: Matrix<f64> = Matrix::rand(size, size, max);
-
-        if s {
-            let n = rng.gen_range(0, size - 1);
-            A = Matrix::rand_sing2(size, n, max);
-            println!("qr_test2: A({},{}), A rank {}, n {}, size {}, \n A is {}", A.rows, A.columns, A.rank(), n, size, A);
-        }
-
-        let b: Vector<f64> = Vector::rand(size as u32, max);
-        let mut qr = A.qr();
-        let Q: Matrix<f64> = form_Q(&qr.q, false);
-        let Qt: Matrix<f64> = form_Q(&qr.q, true);
-        let QR: Matrix<f64> = &Q * &qr.R;
-        let mut QR2: Matrix<f64> = apply_q_R(&qr.R, &qr.q, false);
-        let qb = apply_q_b(&qr.q, &b, false);
-        let qtb = apply_q_b(&qr.q, &b, true);
-        
-        let mut QtQ: Matrix<f64> = &Q * &Qt;
 
         let f = move |x: f64| {
             let c = (2. as f64).powf(32.);
             (x * c).round() / c
         };
+
+        let size = i;
+        let max = 5.;
+        let mut n = 0;
+        let mut A: Matrix<f64> = Matrix::rand(size, size, max);
+        
+        println!("qr_test: case {} -> A({},{}), A rank {}, n {}, size {}, \n A is {} \n", case, A.rows, A.columns, A.rank(), n, size, A);
+        
+        if case == 1 {
+            //arbitrary singular
+            let n = rng.gen_range(0, size - 1);
+            A = Matrix::rand_sing2(size, n, max);
+        } else if case == 2 {
+            //rows > columns
+            let offset = rng.gen_range(1, size);
+            A = Matrix::rand(size + offset, size, max);
+        } else if case == 3 {
+            //rows < columns
+            let offset = rng.gen_range(1, size);
+            A = Matrix::rand(size, size + offset, max);
+        }
+
+        let b: Vector<f64> = Vector::rand(size as u32, max);
+        let mut qr = A.qr();
+
+        let mut R = qr.R.clone();
+        
+        R.apply(&f);
+        
+        println!("\n R is {} \n", R);
+
+        let Q: Matrix<f64> = form_Q(&qr.q, A.rows, false);
+        let Qt: Matrix<f64> = form_Q(&qr.q, A.rows, true);
+        let QR: Matrix<f64> = &Q * &qr.R;
+        let mut QR2: Matrix<f64> = apply_q_R(&qr.R, &qr.q, false);
+        let qb = apply_q_b(&qr.q, &b, false);
+        let qtb = apply_q_b(&qr.q, &b, true);
+        
+        let l = qr.q.len();
+
+        let ps: Vec<Matrix<f64>> = qr.q.clone().iter_mut().map(|v| { form_P(v, R.rows) }).collect();
+
+        for i in 0..ps.len() {
+            let P = &ps[i];
+            println!("\n P({}) is {} \n", i, P);
+            assert!(P.is_symmetric(), "P should be symmetric");
+        }
+
+        let mut QtQ: Matrix<f64> = &Q * &Qt;
         
         QtQ.apply(&f);
 
@@ -1978,26 +2041,12 @@ mod tests {
         println!("\n QtQ {} \n", QtQ);
 
         assert_eq!(QtQ, id0, "QtQ == id");
-
-        let l = qr.q.len();
-
-        let ps: Vec<Matrix<f64>> = qr.q.clone().iter_mut().map(|v| { form_P(v, l) }).collect();
-
-        for i in 0..ps.len() {
-            let P = &ps[i];
-            println!("\n P({}) is {} \n", i, P);
-            assert!(P.is_symmetric(), "P should be symmetric");
-        }
-
+        assert!(eq_bound_eps(&QR, &QR2), "QR = QR2");
         assert!(eq_bound_eps(&A, &QR), "A = QR");
 
-        let mut R = qr.R.clone();
-        
-        R.apply(&f);
-        
-        println!("\n R is {} \n", R);
-        
-        assert!(R.is_upper_triangular(), "R is upper triangular");
+        if R.is_square() { 
+            assert!(R.is_upper_triangular(), "R is upper triangular");
+        }
     }
 
 

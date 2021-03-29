@@ -16,8 +16,10 @@ pub struct qr <T: Number> {
 
 pub fn form_P<T: Number>(v: &Vector<T>, l: usize) -> Matrix<T> {
 
-    let size = l + 1;
+    let size = l;
     
+    println!("\n size {} len {} \n", size, v.data.len());
+
     let offset = size - v.data.len();
 
     let I: Matrix<T> = Matrix::id(size);
@@ -35,15 +37,15 @@ pub fn form_P<T: Number>(v: &Vector<T>, l: usize) -> Matrix<T> {
 
 
 
-pub fn form_Q<T: Number>(q: &Vec<Vector<T>>, t: bool) -> Matrix<T> {
+pub fn form_Q<T: Number>(q: &Vec<Vector<T>>, l:usize, t: bool) -> Matrix<T> {
     
-    let l = q.len();
-
-    let mut Q: Matrix<T> = Matrix::id(l + 1);
+    let mut Q: Matrix<T> = Matrix::id(l);
     
-    for i in 0..l {
+    for i in 0..q.len() {
         let v = &q[i];
         let P = form_P(v, l);
+
+        println!("\n P({},{}) Q({},{}) \n", P.rows, P.columns, Q.rows, Q.columns);
 
         if t {
 
@@ -177,7 +179,7 @@ pub fn house_qr<T: Number>(A:&Matrix<T>) -> qr<T> {
 
     for i in 0..(A.columns - 1) {
 
-        let size = A.rows - i;
+        let size = A.rows - i; // ! 0
         
         let mut x = Vector::new(vec![zero; size]);
         
@@ -194,9 +196,9 @@ pub fn house_qr<T: Number>(A:&Matrix<T>) -> qr<T> {
         ce = ce * T::from_f64(c).unwrap();
         
         let mut v: Vector<T> = &x - &ce;
-
+        
         v.normalize();
-
+        
         q.push(v.clone());
 
 
