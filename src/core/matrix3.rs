@@ -775,7 +775,8 @@ mod tests {
 
         let id0 = Matrix3::id();
         let mut id: Matrix3 = y * m;
-
+        //TODO move to utils
+        //TODO apply should take closure
         fn round(n:f64) -> f64 {
             let c = (2. as f64).powf(32.);
             (n * c).round() / c

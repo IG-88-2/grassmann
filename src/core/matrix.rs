@@ -34,7 +34,7 @@ use num_traits::{Float, Num, NumAssignOps, NumOps, PrimInt, Signed, cast, identi
 use web_sys::Event;
 use crate::{Number, vector, workers::Workers};
 use super::{lu::{block_lu, block_lu_threads_v2, lu, lu_v2}, matrix3::Matrix3, matrix4::Matrix4, multiply::{ multiply_threads, strassen, mul_blocks, get_optimal_depth, decompose_blocks }, 
-qr::{qr, apply_q_R, form_Q, house_qr}, solve::{solve_upper_triangular, solve, solve_lower_triangular}, utils::eq_eps_f64, vector::Vector};
+qr::{qr, apply_q_R, form_Q, form_P, house_qr, apply_q_b}, solve::{solve_upper_triangular, solve, solve_lower_triangular}, utils::eq_eps_f64, vector::Vector};
 
 /*
 TODO 
@@ -1779,40 +1779,112 @@ mod tests {
     use rand::Rng;
     use std::{ f32::EPSILON as EP, f64::EPSILON, f64::consts::PI };
     use crate::{ core::{lu::{block_lu_threads, block_lu_threads_v2, lu}, matrix::{ Matrix }}, matrix, vector };
-    use super::{ apply_q_R, form_Q, block_lu, eq_eps_f64, Vector, P_compact, Number, get_optimal_depth, eq_bound_eps, multiply, mul_blocks, strassen, decompose_blocks };
+    use super::{
+        apply_q_b, apply_q_R, form_Q, form_P, block_lu, eq_eps_f64, Vector, P_compact, Number,
+        get_optimal_depth, eq_bound_eps, multiply, mul_blocks, strassen, decompose_blocks
+    };
+
+
+
+    //givens
+    //jacobi rotations
+    //eigenvalues, eigenvectors (singular values, singular vectors)
+    //svd
+    //pseudo inverse
+    //similar form
+    
+
+
+    #[test]
+    fn qr_test6() {
+
+       //solve (verify with lu)
+        
+    }   
+    
+    
+
+    #[test]
+    fn qr_test5() {
+
+        //cols > rows
+        
+    }
 
 
 
     #[test]
-    fn qr_test() {
+    fn qr_test3() {
 
-        let size = 4;
-
-        let mut A: Matrix<f64> = Matrix::rand(size, size, 5.);
-
-        let mut qr = A.qr();
-
-        let Q = form_Q(&qr.q, false);
-
-        let Qt = form_Q(&qr.q, true);
+        //rows > cols
         
-        qr.Q = Some(Q);
- 
-        qr.Qt = Some(Qt);
+    }
 
-        println!("\n qr: A is {} \n", A);
 
-        let QR: Matrix<f64> = &qr.Q.unwrap() * &qr.R;
 
-        let mut QR2: Matrix<f64> = apply_q_R(&qr.R, &qr.q, false);
+    #[test]
+    fn qr_test2() {
 
-        println!("\n qr: QR is {} \n", QR);
-
-        println!("\n qr: QR2 is {} \n", QR2);
-
-        println!("\n qr: diff is {} \n", &A - &QR);
+        //singular
         
-        assert!(false);
+    }
+
+
+
+    #[test]
+    fn qr_test1() {
+        
+        let test = 6;
+
+        //TODO 1x1, 2x2 
+        for i in 1..test {
+            let size = i;
+            let max = 5.;
+            let mut A: Matrix<f64> = Matrix::rand(size, size, max);
+            let b: Vector<f64> = Vector::rand(size as u32, max);
+            let mut qr = A.qr();
+            let Q: Matrix<f64> = form_Q(&qr.q, false);
+            let Qt: Matrix<f64> = form_Q(&qr.q, true);
+            let QR: Matrix<f64> = &Q * &qr.R;
+            let mut QR2: Matrix<f64> = apply_q_R(&qr.R, &qr.q, false);
+            let qb = apply_q_b(&qr.q, &b, false);
+            let qtb = apply_q_b(&qr.q, &b, true);
+            
+            let mut QtQ: Matrix<f64> = &Q * &Qt;
+
+            let f = move |x: f64| {
+                let c = (2. as f64).powf(32.);
+                (x * c).round() / c
+            };
+            
+            QtQ.apply(&f);
+
+            let id0 = Matrix::id(QtQ.rows);
+
+            println!("\n QtQ {} \n", QtQ);
+
+            assert_eq!(QtQ, id0, "QtQ == id");
+
+            let l = qr.q.len();
+
+            let ps: Vec<Matrix<f64>> = qr.q.clone().iter_mut().map(|v| { form_P(v, l) }).collect();
+
+            for i in 0..ps.len() {
+                let P = &ps[i];
+                println!("\n P({}) is {} \n", i, P);
+                assert!(P.is_symmetric(), "P should be symmetric");
+            }
+
+            assert!(eq_bound_eps(&A, &QR), "A = QR");
+
+            let mut R = qr.R.clone();
+            
+            R.apply(&f);
+            
+            println!("\n R is {} \n", R);
+            
+            assert!(R.is_upper_triangular(), "R is upper triangular");
+        }
     }
 
 

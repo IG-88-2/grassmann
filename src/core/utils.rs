@@ -39,6 +39,13 @@ pub fn measure_time(f: fn()) -> u128 {
 
 
 
+pub fn round(n:f64) -> f64 {
+    let c = (2. as f64).powf(32.);
+    (n * c).round() / c
+}
+
+
+
 pub fn clamp(min: f64, max: f64) -> Box<dyn Fn(f64) -> f64> {
     
     let f = move |n: f64| {

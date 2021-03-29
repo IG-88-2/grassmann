@@ -14,6 +14,27 @@ pub struct qr <T: Number> {
 
 
 
+pub fn form_P<T: Number>(v: &Vector<T>, l: usize) -> Matrix<T> {
+
+    let size = l + 1;
+
+    let offset = size - v.data.len();
+
+    let I: Matrix<T> = Matrix::id(size);
+
+    let u: Matrix<T> = v.clone().into();
+
+    let ut: Matrix<T> = u.transpose();
+
+    let uut: Matrix<T> = &u * &ut;
+
+    let P: Matrix<T> = add(&I, &(uut * T::from_f64(-2.).unwrap()), offset);
+
+    P
+}
+
+
+
 pub fn form_Q<T: Number>(q: &Vec<Vector<T>>, t: bool) -> Matrix<T> {
     
     let l = q.len();
@@ -22,12 +43,8 @@ pub fn form_Q<T: Number>(q: &Vec<Vector<T>>, t: bool) -> Matrix<T> {
     
     for i in 0..l {
         let v = &q[i];
-        let I: Matrix<T> = Matrix::id(l + 1);
-        let u: Matrix<T> = v.clone().into();
-        let ut: Matrix<T> = u.transpose();
-        let uut: Matrix<T> = &u * &ut;
-        let P: Matrix<T> = add(&I, &(uut * T::from_f64(-2.).unwrap()), i);
-        
+        let P = form_P(v, l);
+
         if t {
 
             Q = &P * &Q;
@@ -43,13 +60,53 @@ pub fn form_Q<T: Number>(q: &Vec<Vector<T>>, t: bool) -> Matrix<T> {
 
 
 
-pub fn apply_q_b() {
+pub fn apply_q_b<T: Number>(q: &Vec<Vector<T>>, b: &Vector<T>, t: bool) -> Vector<T> {
 
+    let zero = T::from_f64(0.).unwrap();
+
+    let mut b2 = b.clone();
+
+    let l = (q.len() - 1) as i32;
+
+    let mut i: i32 = l;
+
+    if t {
+        i = 0;
+    }
+
+    loop {
+        
+        let z = i as usize;
+        
+        let v = &q[z];
+        
+        let mut x = Vector::new(vec![zero; v.data.len()]);
+        
+        for k in z..b2.data.len() {
+            x[k - z] = b2[k];
+        }
+
+        let s = T::from_f64( 2. * (v * &x) ).unwrap();
+
+        let u = v * s;
+        
+        for k in z..b2.data.len() {
+            b2[k] -= u[k - z];
+        }
+
+        if t { i += 1; } else { i -= 1; }
+        
+        if i > l || i < 0 {
+            break;
+        }
+    }
+
+    b2
 }
 
 
 
-pub fn apply_q_R<T: Number>(R: &Matrix<T>, q:&Vec<Vector<T>>, t: bool) -> Matrix<T> {
+pub fn apply_q_R<T: Number>(R: &Matrix<T>, q: &Vec<Vector<T>>, t: bool) -> Matrix<T> {
 
     let mut QR = R.clone();
 
