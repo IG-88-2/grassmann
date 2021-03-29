@@ -155,7 +155,7 @@ impl Vector3 {
 
     pub fn retrieve_rotation(&self, origin:f64) -> Matrix4 {
 
-        let [x, y, z] = Matrix3::id().into_basis();
+        let [_x, y, z] = Matrix3::id().into_basis();
 
         let mut y_ang = self.angle(&y);
 

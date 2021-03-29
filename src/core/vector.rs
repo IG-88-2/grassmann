@@ -102,7 +102,7 @@ impl <T:Number> Vector <T> {
 
         let mut rng = rand::thread_rng();
 
-        for i in 0..length {
+        for _i in 0..length {
             let x: f64 = rng.gen_range(0., max); 
             let x = T::from_f64(x).unwrap();
             v.data.push(x);

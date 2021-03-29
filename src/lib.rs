@@ -1,3 +1,4 @@
+#![allow(warnings, dead_code, unused_imports, unused)]
 mod core;
 mod workers;
 use crate::core::*;

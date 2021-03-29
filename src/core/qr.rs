@@ -17,7 +17,7 @@ pub struct qr <T: Number> {
 pub fn form_P<T: Number>(v: &Vector<T>, l: usize) -> Matrix<T> {
 
     let size = l + 1;
-
+    
     let offset = size - v.data.len();
 
     let I: Matrix<T> = Matrix::id(size);
@@ -66,6 +66,10 @@ pub fn apply_q_b<T: Number>(q: &Vec<Vector<T>>, b: &Vector<T>, t: bool) -> Vecto
 
     let mut b2 = b.clone();
 
+    if b2.data.len() <= 1 {
+       return b2; 
+    }
+
     let l = (q.len() - 1) as i32;
 
     let mut i: i32 = l;
@@ -109,6 +113,10 @@ pub fn apply_q_b<T: Number>(q: &Vec<Vector<T>>, b: &Vector<T>, t: bool) -> Vecto
 pub fn apply_q_R<T: Number>(R: &Matrix<T>, q: &Vec<Vector<T>>, t: bool) -> Matrix<T> {
 
     let mut QR = R.clone();
+
+    if R.columns <= 1 {
+        return QR;
+    }
 
     let zero = T::from_f64(0.).unwrap();
     

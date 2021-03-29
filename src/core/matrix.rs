@@ -1,4 +1,3 @@
-#![allow(dead_code, warnings)]
 #![feature(layout_for_ptr)]
 //http://www.hpcavf.uclan.ac.uk/softwaredoc/sgi_scsl_html/sgi_html/ch03.html#ag5Plchri
 use std::{any::TypeId, cell::RefCell, cmp::min, f32::EPSILON, future::Future, mem::*, pin::Pin, rc::Rc, task::{Context, Poll}, time::Instant};
@@ -415,6 +414,25 @@ impl <T: Number> Matrix<T> {
 
 
 
+    pub fn rand_perm(size: usize) -> Matrix<T> {
+
+        let mut m: Matrix<T> = Matrix::id(size);
+
+        let mut rng = rand::thread_rng();
+
+        let n: u32 = rng.gen_range(1, (size + 1) as u32);
+
+        for i in 0..n {
+            let high = (size - 1) as u32;
+            let j: u32 = rng.gen_range(0, high);
+            m.exchange_rows(i as usize, j as usize);
+        }
+
+        m
+    }
+
+
+
     //TODO improve, assert n!
     fn generate_permutations(size: usize) -> Vec<Matrix<f32>> {
         let m: Matrix<f32> = Matrix::id(size);
@@ -783,7 +801,92 @@ impl <T: Number> Matrix<T> {
 
         Matrix::rand(rows, columns, max)
     }
-    
+
+
+
+    pub fn rand_sing2(size: usize, n: usize, max: f64) -> Matrix<T> {
+        
+        assert!(n < size, "rand_sing2: n < size");
+
+        let mut rng = rand::thread_rng();
+
+        let zero = T::from_f64(0.).unwrap();
+
+        let span = size - n;
+
+        let mut basis: Vec<Vector<T>> = Vec::new();
+
+        let mut null: Vec<Vector<T>> = Vec::new(); 
+
+        for i in 0..span {
+            let v: Vector<T> = Vector::rand(size as u32, max);
+            basis.push(v);
+        }
+
+        for i in 0..n {
+            let mut v: Vector<T> = Vector::new(vec![zero; size]);
+
+            for j in 0..basis.len() {
+                let mut k = basis[j].clone();
+                let s: f64 = rng.gen_range(0., 1.);
+                k = k * T::from_f64(s).unwrap();
+                v = v + k;
+            }
+
+            null.push(v);
+        }
+        
+        basis.append(&mut null);
+
+        let result = Matrix::from_basis(basis);
+
+        let P: Matrix<T> = Matrix::rand_perm(result.columns);
+
+        result * P
+    }
+
+
+
+    pub fn rand_sing(size: usize, max:f64) -> Matrix<T> {
+        
+        let mut rng = rand::thread_rng();
+
+        let mut A = Matrix::rand(size, size, max);
+        
+        if size <= 1 {
+            return A;
+        }
+
+        let c: usize = rng.gen_range(0, (size - 1) as u32) as usize;
+
+        let mut basis = A.into_basis();
+
+        println!("\n c is {} \n", c);
+        
+        for i in 0..A.rows {
+            basis[c][i] = T::from_f64(0.).unwrap();
+        }
+
+        for i in 0..A.columns {
+
+            if i == c {
+               continue;
+            }
+            
+            let mut v = basis[i].clone();
+
+            let s: f64 = rng.gen_range(0., 1.);
+
+            v = v * T::from_f64(s).unwrap();
+
+            for j in 0..A.rows {
+                basis[c][j] = basis[c][j] + v[j];
+            }
+        }
+
+        Matrix::from_basis(basis)
+    }
+
 
 
     pub fn depth(&self) -> i32 {
@@ -1796,7 +1899,7 @@ mod tests {
 
 
     #[test]
-    fn qr_test6() {
+    fn qr_test4() {
 
        //solve (verify with lu)
         
@@ -1805,7 +1908,7 @@ mod tests {
     
 
     #[test]
-    fn qr_test5() {
+    fn qr_test3() {
 
         //cols > rows
         
@@ -1814,7 +1917,7 @@ mod tests {
 
 
     #[test]
-    fn qr_test3() {
+    fn qr_test2() {
 
         //rows > cols
         
@@ -1823,71 +1926,122 @@ mod tests {
 
 
     #[test]
-    fn qr_test2() {
-
-        //singular
+    fn qr_test1() {
         
+        let test = 25;
+        
+        let mut rng = rand::thread_rng();
+        
+        for i in 2..test {
+            qr_test(i, true);
+            qr_test(i, false);
+        }
+    }
+
+
+
+    fn qr_test(i:usize, s:bool) {
+
+        let mut rng = rand::thread_rng();
+        
+        let size = i;
+        let max = 5.;
+        let mut n = 0;
+        let mut A: Matrix<f64> = Matrix::rand(size, size, max);
+
+        if s {
+            let n = rng.gen_range(0, size - 1);
+            A = Matrix::rand_sing2(size, n, max);
+            println!("qr_test2: A({},{}), A rank {}, n {}, size {}, \n A is {}", A.rows, A.columns, A.rank(), n, size, A);
+        }
+
+        let b: Vector<f64> = Vector::rand(size as u32, max);
+        let mut qr = A.qr();
+        let Q: Matrix<f64> = form_Q(&qr.q, false);
+        let Qt: Matrix<f64> = form_Q(&qr.q, true);
+        let QR: Matrix<f64> = &Q * &qr.R;
+        let mut QR2: Matrix<f64> = apply_q_R(&qr.R, &qr.q, false);
+        let qb = apply_q_b(&qr.q, &b, false);
+        let qtb = apply_q_b(&qr.q, &b, true);
+        
+        let mut QtQ: Matrix<f64> = &Q * &Qt;
+
+        let f = move |x: f64| {
+            let c = (2. as f64).powf(32.);
+            (x * c).round() / c
+        };
+        
+        QtQ.apply(&f);
+
+        let id0 = Matrix::id(QtQ.rows);
+
+        println!("\n QtQ {} \n", QtQ);
+
+        assert_eq!(QtQ, id0, "QtQ == id");
+
+        let l = qr.q.len();
+
+        let ps: Vec<Matrix<f64>> = qr.q.clone().iter_mut().map(|v| { form_P(v, l) }).collect();
+
+        for i in 0..ps.len() {
+            let P = &ps[i];
+            println!("\n P({}) is {} \n", i, P);
+            assert!(P.is_symmetric(), "P should be symmetric");
+        }
+
+        assert!(eq_bound_eps(&A, &QR), "A = QR");
+
+        let mut R = qr.R.clone();
+        
+        R.apply(&f);
+        
+        println!("\n R is {} \n", R);
+        
+        assert!(R.is_upper_triangular(), "R is upper triangular");
     }
 
 
 
     #[test]
-    fn qr_test1() {
-        
-        let test = 6;
+    fn rand_sing2_test() {
 
-        //TODO 1x1, 2x2 
-        for i in 1..test {
+        let test = 30;
+
+        for i in 2..test {
+
             let size = i;
+
             let max = 5.;
-            let mut A: Matrix<f64> = Matrix::rand(size, size, max);
-            let b: Vector<f64> = Vector::rand(size as u32, max);
-            let mut qr = A.qr();
-            let Q: Matrix<f64> = form_Q(&qr.q, false);
-            let Qt: Matrix<f64> = form_Q(&qr.q, true);
-            let QR: Matrix<f64> = &Q * &qr.R;
-            let mut QR2: Matrix<f64> = apply_q_R(&qr.R, &qr.q, false);
-            let qb = apply_q_b(&qr.q, &b, false);
-            let qtb = apply_q_b(&qr.q, &b, true);
             
-            let mut QtQ: Matrix<f64> = &Q * &Qt;
-
-            let f = move |x: f64| {
-                let c = (2. as f64).powf(32.);
-                (x * c).round() / c
-            };
+            let mut rng = rand::thread_rng();
             
-            QtQ.apply(&f);
-
-            let id0 = Matrix::id(QtQ.rows);
-
-            println!("\n QtQ {} \n", QtQ);
-
-            assert_eq!(QtQ, id0, "QtQ == id");
-
-            let l = qr.q.len();
-
-            let ps: Vec<Matrix<f64>> = qr.q.clone().iter_mut().map(|v| { form_P(v, l) }).collect();
-
-            for i in 0..ps.len() {
-                let P = &ps[i];
-                println!("\n P({}) is {} \n", i, P);
-                assert!(P.is_symmetric(), "P should be symmetric");
-            }
-
-            assert!(eq_bound_eps(&A, &QR), "A = QR");
-
-            let mut R = qr.R.clone();
+            let n: u32 = rng.gen_range(0, size - 1);
             
-            R.apply(&f);
-            
-            println!("\n R is {} \n", R);
-            
-            assert!(R.is_upper_triangular(), "R is upper triangular");
+            let A: Matrix<f64> = Matrix::rand_sing2(size as usize, n as usize, max);
+    
+            println!("\n A rank is {}, n is {}, size is {} \n", A.rank(), n, size);
+
+            assert!(A.is_square(), "A is square");
+
+            assert_eq!(A.rank() + n, size, "A.rank() + n = size");
         }
     }
 
 
+
+    #[test]
+    fn rand_sing_test() {
+        
+        let size = 5;
+
+        let max = 5.;
+
+        let A: Matrix<f64> = Matrix::rand_sing(size, max);
+
+        assert!( A.rank() < 5, "A.rank() < 5");
+    }
+
+    
 
     #[test]
     fn cholesky_test() {
