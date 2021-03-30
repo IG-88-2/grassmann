@@ -17,8 +17,6 @@ pub struct qr <T: Number> {
 pub fn form_P<T: Number>(v: &Vector<T>, l: usize) -> Matrix<T> {
 
     let size = l;
-    
-    println!("\n size {} len {} \n", size, v.data.len());
 
     let offset = size - v.data.len();
 
@@ -45,8 +43,6 @@ pub fn form_Q<T: Number>(q: &Vec<Vector<T>>, l:usize, t: bool) -> Matrix<T> {
         let v = &q[i];
         let P = form_P(v, l);
 
-        println!("\n P({},{}) Q({},{}) \n", P.rows, P.columns, Q.rows, Q.columns);
-
         if t {
 
             Q = &P * &Q;
@@ -72,9 +68,9 @@ pub fn apply_q_b<T: Number>(q: &Vec<Vector<T>>, b: &Vector<T>, t: bool) -> Vecto
        return b2; 
     }
 
-    let l = (q.len() - 1) as i32;
+    let l = q.len() - 1;
 
-    let mut i: i32 = l;
+    let mut i = l;
 
     if t {
         i = 0;
@@ -82,28 +78,28 @@ pub fn apply_q_b<T: Number>(q: &Vec<Vector<T>>, b: &Vector<T>, t: bool) -> Vecto
 
     loop {
         
-        let z = i as usize;
-        
-        let v = &q[z];
+        let v = &q[i];
         
         let mut x = Vector::new(vec![zero; v.data.len()]);
         
-        for k in z..b2.data.len() {
-            x[k - z] = b2[k];
+        for k in i..b2.data.len() {
+            x[k - i] = b2[k];
         }
-
-        let s = T::from_f64( 2. * (v * &x) ).unwrap();
-
-        let u = v * s;
         
-        for k in z..b2.data.len() {
-            b2[k] -= u[k - z];
+        let u = v * T::from_f64( 2. * (v * &x) ).unwrap();
+        
+        for k in i..b2.data.len() {
+            b2[k] -= u[k - i];
         }
-
-        if t { i += 1; } else { i -= 1; }
         
-        if i > l || i < 0 {
+        let mut y = i as i32;
+
+        if t { y += 1; } else { y -= 1; }
+        
+        if y > l as i32 || y < 0 {
             break;
+        } else {
+            i = y as usize;
         }
     }
 
@@ -114,15 +110,17 @@ pub fn apply_q_b<T: Number>(q: &Vec<Vector<T>>, b: &Vector<T>, t: bool) -> Vecto
 
 pub fn apply_q_R<T: Number>(R: &Matrix<T>, q: &Vec<Vector<T>>, t: bool) -> Matrix<T> {
 
+    let zero = T::from_f64(0.).unwrap();
+
+    let m = min(R.columns, R.rows) - 1;
+
     let mut QR = R.clone();
 
-    if R.columns <= 1 {
+    if m < 1 {
         return QR;
     }
-
-    let zero = T::from_f64(0.).unwrap();
     
-    let mut i: i32 = (R.columns - 2) as i32;
+    let mut i = m - 1;
     
     if t {
         i = 0;
@@ -130,33 +128,33 @@ pub fn apply_q_R<T: Number>(R: &Matrix<T>, q: &Vec<Vector<T>>, t: bool) -> Matri
 
     loop {
         
-        let z = i as usize;
-
-        let size = R.rows - z;
+        let v = &q[i];
         
-        let v = &q[z];
-        
-        for j in z..R.columns {
+        for j in i..R.columns {
             
-            let mut x = Vector::new(vec![zero; size]);
+            let mut x = Vector::new(vec![zero; v.data.len()]);
             
-            for k in z..R.rows {
-                x[k - z] = QR[[k, j]];
+            for k in i..R.rows {
+                x[k - i] = QR[[k, j]];
             }
 
             let s = T::from_f64( 2. * (v * &x) ).unwrap();
 
             let u = v * s;
             
-            for k in z..R.rows {
-                QR[[k, j]] -= u[k - z];
+            for k in i..R.rows {
+                QR[[k, j]] -= u[k - i];
             }
         }
 
-        if t { i += 1; } else { i -= 1; }
+        let mut y = i as i32;
+
+        if t { y += 1; } else { y -= 1; }
         
-        if i > (R.columns - 2) as i32 || i < 0 {
-            break;
+        if y > m as i32 || y < 0 { 
+            break; 
+        } else {
+            i = y as usize;
         }
     }
 
@@ -175,11 +173,11 @@ pub fn house_qr<T: Number>(A:&Matrix<T>) -> qr<T> {
 
     let mut q: Vec<Vector<T>> = Vec::new();
 
+    let m = min(A.columns, A.rows) - 1;
 
+    for i in 0..m {
 
-    for i in 0..(A.columns - 1) {
-
-        let size = A.rows - i; // ! 0
+        let size = A.rows - i;
         
         let mut x = Vector::new(vec![zero; size]);
         

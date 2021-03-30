@@ -1,7 +1,7 @@
 #![allow(dead_code, warnings)]
 use std::{f32::EPSILON, mem::size_of, ops::Index, time::Instant};
 use crate::Number;
-use super::matrix::Matrix;
+use super::{matrix::Matrix, vector::Vector};
 use js_sys::{Float32Array, Float64Array, SharedArrayBuffer, Uint8Array};
 use num_traits::identities;
 //use rand::prelude::*;
@@ -65,4 +65,23 @@ pub fn clamp(min: f64, max: f64) -> Box<dyn Fn(f64) -> f64> {
 
 pub fn eq_eps_f64(a: f64, b: f64) -> bool {
     (a - b).abs() < EPSILON as f64
+}
+
+
+
+pub fn eq_bound_eps_v<T: Number>(a: &Vector<T>, b: &Vector<T>) -> bool {
+    
+    if a.data.len() != b.data.len() {
+       return false;
+    }
+
+    for i in 0..a.data.len() {
+        let d = a[i] - b[i];
+        let dd: f64 = T::to_f64(&d).unwrap();
+        if (dd).abs() > EPSILON as f64 {
+            return false;
+        }
+    }
+    
+    true
 }
