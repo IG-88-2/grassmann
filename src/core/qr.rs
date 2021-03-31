@@ -189,9 +189,7 @@ pub fn house_qr<T: Number>(A:&Matrix<T>) -> qr<T> {
         
         let mut ce = Vector::new(vec![zero; size]);
 
-        ce.data[0] = one;
-
-        ce = ce * T::from_f64(c).unwrap();
+        ce.data[0] = T::from_f64(c).unwrap();
         
         let mut v: Vector<T> = &x - &ce;
         

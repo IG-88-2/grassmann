@@ -996,10 +996,13 @@ impl <T: Number> Matrix<T> {
     }
 
 
+
     //TODO - around each axis
+    //Givens
     pub fn rotation() {
 
     }
+
 
 
     pub fn project(&self, b:&Vector<T>) -> Vector<T> {
@@ -1052,9 +1055,111 @@ impl <T: Number> Matrix<T> {
 
     
     pub fn qr(&self) -> qr<T> {
-        
+        //givens_qr
         house_qr(self)
 
+    }
+
+
+
+    pub fn eig() {
+
+        let f = move |x: f64| {
+            let c = (2. as f64).powf(16.);
+            (x * c).round() / c
+        };
+        
+        let rows = 5;
+        let columns = 5;
+        let max = 5.;
+        let mut A: Matrix<f64> = Matrix::rand(rows, columns, max);
+        let t = A.transpose();
+        
+        A = &t * &A;
+
+        let mut i = 0;
+
+        let mut B = A.clone();
+
+        while !B.is_upper_triangular() {
+            //println!("\n [{}] \n", i);
+            //println!("\n [{}] A is {} \n", i, A);
+
+            println!("\n B is {} \n", B);
+
+            let mut qr = A.qr();
+            //qr.R.apply(&f);
+            println!("\n R is {} \n", qr.R);
+            let Q: Matrix<f64> = form_Q(&qr.q, A.rows, false);
+            let K: Matrix<f64> = &qr.R * &Q;
+            A = K;
+            B = A.clone();
+            B.apply(&f);
+            i += 1;
+        }
+        //verify eigenvalues live on diagonal
+        println!("converged at {}", i);
+    }
+
+
+
+    pub fn upper_hessenberg(&self) -> Matrix<T> {
+        
+        assert!(self.is_square(), "upper_hessenberg: A should be square");
+
+        let zero = T::from_f64(0.).unwrap();
+
+        let one = T::from_f64(1.).unwrap();
+
+        let mut H = self.clone();
+        
+        if H.rows <= 2 {
+           return H; 
+        }
+        
+        for i in 0..(H.columns - 1) {
+            let s = i + 1;
+            let l = H.rows - s;
+            let mut x = Vector::new(vec![zero; l]);
+            let mut ce = Vector::new(vec![zero; l]);
+
+            for j in s..H.rows {
+                x[j - s] = H[[j, i]];
+            }
+
+            ce[0] = T::from_f64( x.length() ).unwrap();
+            
+            let mut v: Vector<T> = &x - &ce;
+        
+            v.normalize();
+
+            let P = form_P(&v, H.rows);
+
+            let Pt = P.transpose();
+            
+            //TODO apply left right
+            H = &(&P * &H) * &P;
+        }
+
+        H
+    }
+
+
+
+    pub fn lower_hessenberg(&self) {
+
+    }
+
+
+
+    pub fn is_upper_hessenberg(&self) {
+
+    }
+
+
+
+    pub fn is_lower_hessenberg(&self) {
+        
     }
 
 
@@ -1895,57 +2000,34 @@ mod tests {
     //svd
     //pseudo inverse
     //similar form (is similar)
-    
-
+    //iterative refinement
+    //eig for 2x2, 3x3 (for verification) 
 
     #[test]
     fn qr_test_solve() {
 
        //solve (verify with lu)
         
-    }   
+    }
     
-
-
+    
+    
     #[test]
-    fn qr_test2() {
+    fn upper_hessenberg_test() {
 
         let f = move |x: f64| {
-            let c = (2. as f64).powf(16.);
-            (x * c).round() / c
+            x.round()
         };
-        
-        let rows = 5;
-        let columns = 5;
-        let max = 5.;
-        let mut A: Matrix<f64> = Matrix::rand(rows, columns, max);
-        let t = A.transpose();
-        
-        A = &t * &A;
 
-        let mut i = 0;
+        let size = 3;
+        let max = 50.;
+        let mut A: Matrix<f64> = Matrix::rand(size, size, max);
+        let mut H = A.upper_hessenberg();
 
-        let mut B = A.clone();
+        H.apply(&f);
 
-        while !B.is_upper_triangular() {
-            //println!("\n [{}] \n", i);
-            //println!("\n [{}] A is {} \n", i, A);
+        println!("\n H is {} \n", H);
 
-            println!("\n B is {} \n", B);
-
-            let mut qr = A.qr();
-            //qr.R.apply(&f);
-            println!("\n R is {} \n", qr.R);
-            let Q: Matrix<f64> = form_Q(&qr.q, A.rows, false);
-            let K: Matrix<f64> = &qr.R * &Q;
-            A = K;
-            B = A.clone();
-            B.apply(&f);
-            i += 1;
-        }
-        //verify eigenvalues live on diagonal
-        println!("converged at {}", i);
-        
         assert!(false);
     }
 
