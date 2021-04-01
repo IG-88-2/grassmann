@@ -14,11 +14,11 @@ pub struct qr <T: Number> {
 
 
 
-pub fn form_P<T: Number>(v: &Vector<T>, l: usize) -> Matrix<T> {
+pub fn form_P<T: Number>(v: &Vector<T>, l: usize, d: bool) -> Matrix<T> {
 
     let size = l;
 
-    let offset = size - v.data.len();
+    let offset = if d { size - v.data.len() } else { 0 };
 
     let I: Matrix<T> = Matrix::id(size);
 
@@ -41,7 +41,7 @@ pub fn form_Q<T: Number>(q: &Vec<Vector<T>>, l:usize, t: bool) -> Matrix<T> {
     
     for i in 0..q.len() {
         let v = &q[i];
-        let P = form_P(v, l);
+        let P = form_P(v, l, true);
 
         if t {
 
@@ -174,6 +174,8 @@ pub fn house_qr<T: Number>(A:&Matrix<T>) -> qr<T> {
     let mut q: Vec<Vector<T>> = Vec::new();
 
     let m = min(A.columns, A.rows) - 1;
+
+    
 
     for i in 0..m {
 

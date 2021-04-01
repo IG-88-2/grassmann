@@ -1110,21 +1110,20 @@ impl <T: Number> Matrix<T> {
         let zero = T::from_f64(0.).unwrap();
 
         let one = T::from_f64(1.).unwrap();
-
-        let mut H = self.clone();
         
-        if H.rows <= 2 {
-           return H; 
+        let mut K = self.clone();
+        
+        if K.rows <= 2 {
+           return K; 
         }
         
-        for i in 0..(H.columns - 1) {
-            let s = i + 1;
-            let l = H.rows - s;
+        for i in 0..(K.columns - 1) {
+            let l = K.rows - i - 1;
             let mut x = Vector::new(vec![zero; l]);
             let mut ce = Vector::new(vec![zero; l]);
 
-            for j in s..H.rows {
-                x[j - s] = H[[j, i]];
+            for j in (i + 1)..K.rows {
+                x[j - i - 1] = K[[j, i]];
             }
 
             ce[0] = T::from_f64( x.length() ).unwrap();
@@ -1133,11 +1132,77 @@ impl <T: Number> Matrix<T> {
         
             v.normalize();
 
-            let P = form_P(&v, H.rows);
+            for j in i..K.columns {
+                
+                let mut x = Vector::new(vec![zero; v.data.len()]);
+                
+                for k in 0..v.data.len() {
+                    x[k] = K[[k + i + 1, j]];
+                }
+                
+                let u = &v * T::from_f64( 2. * (&v * &x) ).unwrap();
+                
+                for k in 0..u.data.len() {
+                    K[[k + i + 1, j]] -= u[k];
+                }
+            }
 
-            let Pt = P.transpose();
+            for j in 0..K.rows {
+                
+                let mut x = Vector::new(vec![zero; v.data.len()]);
+                
+                for k in 0..v.data.len() {
+                    x[k] = K[[j, k + i + 1]];
+                }
+                
+                let u = &v * T::from_f64( 2. * (&v * &x) ).unwrap();
+                
+                for k in 0..u.data.len() {
+                    K[[j, k + i + 1]] -= u[k];
+                }
+            }
+        }
+
+        K
+    }
+
+
+
+    pub fn lower_hessenberg(&self) -> Matrix<T> {
+
+        assert!(self.is_square(), "lower_hessenberg: A should be square");
+
+        let zero = T::from_f64(0.).unwrap();
+
+        let one = T::from_f64(1.).unwrap();
+
+        let mut H = self.clone();
+        
+        if H.rows <= 2 {
+           return H;
+        }
+
+        let f = move |x: T| {
+            let y = T::to_i64(&x).unwrap();
+            T::from_i64(y).unwrap()
+        };
+
+        for i in (2..(H.columns)).rev() {
+            let mut x = Vector::new(vec![zero; i]);
+            let mut ce = Vector::new(vec![zero; i]);
+
+            for j in 0..i {
+                x[j] = H[[j, i]];
+            }
             
-            //TODO apply left right
+            ce[i - 1] = T::from_f64( x.length() ).unwrap();
+            
+            let mut v: Vector<T> = &x - &ce;
+        
+            v.normalize();
+
+            let P = form_P(&v, H.rows, false);
+            
             H = &(&P * &H) * &P;
         }
 
@@ -1146,20 +1211,44 @@ impl <T: Number> Matrix<T> {
 
 
 
-    pub fn lower_hessenberg(&self) {
-
-    }
-
-
-
-    pub fn is_upper_hessenberg(&self) {
-
-    }
-
-
-
-    pub fn is_lower_hessenberg(&self) {
+    pub fn is_upper_hessenberg(&self) -> bool {
         
+        if !self.is_square() {
+           return false; 
+        }
+
+        for i in 0..(self.columns - 2) {
+            for j in (i + 2)..self.rows {
+                
+                if T::to_f64(&self[[j, i]]).unwrap().abs() > EPSILON as f64 {
+                   return false;
+                }
+            }
+        }
+
+        true
+    }
+
+
+
+    pub fn is_lower_hessenberg(&self) -> bool {
+
+        let zero = T::from_f64(0.).unwrap();
+
+        if !self.is_square() {
+           return false; 
+        }
+
+        for i in (2..self.columns).rev() {
+            for j in 0..(i - 1) {
+
+                if T::to_f64(&self[[j, i]]).unwrap().abs() > EPSILON as f64 {
+                   return false;
+                }
+            }
+        }
+
+        true
     }
 
 
@@ -1405,8 +1494,9 @@ pub fn add <T: Number>(A: &Matrix<T>, B: &Matrix<T>, offset:usize) -> Matrix<T> 
 
     assert!(A.columns >= B.columns, "columns do not match");
     
-    let mut C: Matrix<T> = Matrix::new(A.rows, A.columns);
+    let mut C: Matrix<T> = A.clone(); //Matrix::new(A.rows, A.columns);
     
+    /*
     if offset > 0 {
         for i in 0..offset {
             for j in 0..offset {
@@ -1414,10 +1504,12 @@ pub fn add <T: Number>(A: &Matrix<T>, B: &Matrix<T>, offset:usize) -> Matrix<T> 
             }
         }
     }
+    */
 
     for i in 0..B.rows {
         for j in 0..B.columns {
-            C[[i + offset, j + offset]] = A[[i,j]] + B[[i,j]];
+            C[[i + offset, j + offset]] += B[[i,j]];
+            //C[[i + offset, j + offset]] = A[[i,j]] + B[[i,j]];
         }
     }
     
@@ -1994,7 +2086,8 @@ mod tests {
 
 
 
-    //givens rotations
+    
+    
     //jacobi rotations
     //eigenvalues, eigenvectors (singular values, singular vectors)
     //svd
@@ -2002,6 +2095,7 @@ mod tests {
     //similar form (is similar)
     //iterative refinement
     //eig for 2x2, 3x3 (for verification) 
+    //givens rotations
 
     #[test]
     fn qr_test_solve() {
@@ -2009,26 +2103,42 @@ mod tests {
        //solve (verify with lu)
         
     }
+
+
     
-    
+    #[test]
+    fn lower_hessenberg_test() {
+
+        let test = 15;
+
+        for i in 3..test {
+            let size = i;
+            let max = 50.;
+            let mut A: Matrix<f64> = Matrix::rand(size, size, max);
+            let mut H = A.lower_hessenberg();
+            
+            println!("\n H is {} \n", H);
+            
+            assert!(H.is_lower_hessenberg(), "H should be lower hessenberg");
+        }
+    }
+
+
     
     #[test]
     fn upper_hessenberg_test() {
 
-        let f = move |x: f64| {
-            x.round()
-        };
+        let test = 120;
 
-        let size = 3;
-        let max = 50.;
-        let mut A: Matrix<f64> = Matrix::rand(size, size, max);
-        let mut H = A.upper_hessenberg();
-
-        H.apply(&f);
-
-        println!("\n H is {} \n", H);
-
-        assert!(false);
+        for i in 3..test {
+            let size = 6;
+            let max = 50.;
+            let mut A: Matrix<f64> = Matrix::rand(size, size, max);
+            let mut H = A.upper_hessenberg();
+            
+            println!("\n H is {} \n", H);
+            assert!(H.is_upper_hessenberg(), "H should be upper hessenberg");
+        }
     }
 
 
@@ -2109,7 +2219,7 @@ mod tests {
 
         let l = qr.q.len();
 
-        let ps: Vec<Matrix<f64>> = qr.q.clone().iter_mut().map(|v| { form_P(v, R.rows) }).collect();
+        let ps: Vec<Matrix<f64>> = qr.q.clone().iter_mut().map(|v| { form_P(v, R.rows, true) }).collect();
 
         for i in 0..ps.len() {
             let P = &ps[i];
