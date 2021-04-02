@@ -109,6 +109,8 @@ next x = x - u (shifting x towards better accuracy)
 //avg
 //add
 //subtract
+//complex matrix
+//tensor
 //mul float
 //mul matrix
 //transpose
@@ -123,6 +125,7 @@ next x = x - u (shifting x towards better accuracy)
 //rref
 //cofactors
 //det formula
+//update lu
 //is_positive_definite
 //is_invertible
 //is_upshift_permutation
@@ -140,7 +143,7 @@ next x = x - u (shifting x towards better accuracy)
 //is_permutation
 //is_upper_hessenberg
 //is_lower_hessenberg
-
+//TODO debugger
 //hash table with entries tuples for indices
 //assemble matrix from row vectors
 //assemble matrix from column vectors
@@ -997,10 +1000,87 @@ impl <T: Number> Matrix<T> {
 
 
 
-    //TODO - around each axis
-    //Givens
-    pub fn rotation() {
+    pub fn givens(&self, i: usize, j: usize) -> (Matrix<T>, Matrix<T>) {
 
+        assert!(i > 0, "givens: i > 0");
+
+        let mut G: Matrix<T> = Matrix::id(self.rows);
+        let mut inv: Matrix<T> = Matrix::id(self.rows);
+        
+        let b = self[[i, j]];
+        let e = self[[i + 1, j]];
+
+        let x: f64 = T::to_f64(&(e / b)).unwrap();
+        
+        let phi = x.atan();
+        let s = T::from_f64( phi.sin() ).unwrap();
+        let c = T::from_f64( phi.cos() ).unwrap();
+        
+        println!("\n (f/e) is {}, (s/c) {}\n", x, (phi.sin() / phi.cos()));
+        
+        G[[i, j]] = c;
+        G[[i + 1, j + 1]] = c;
+        G[[i, j + 1]] = s;
+        G[[i + 1, j]] = -s;
+        
+        let d = c * c + s * s;
+        let k: T = c / d;
+        let p: T = s / d;
+
+        inv[[i, j]] = k;
+        inv[[i + 1, j + 1]] = k;
+        inv[[i, j + 1]] = -p;
+        inv[[i + 1, j]] = p;
+        
+        (G, inv)
+    }
+
+
+
+    pub fn givens2(&self, i: usize, j: usize) -> Matrix<T> {
+
+        assert!(i > 0, "givens: i > 0");
+
+        let mut G: Matrix<T> = Matrix::id(self.rows);
+
+        let basis = self.into_basis();
+
+        //cos in which dimension
+
+        let target = &basis[i];
+        let mut target2 = target.clone();
+        
+        target2[j] = T::from_f64(0.).unwrap();
+
+        let l1 = target.length();
+        let l2 = target2.length();
+        let d: f64 = (target * &target2) / (l1 * l2);
+        let phi = d.acos();
+        
+        let s = T::from_f64( phi.sin() ).unwrap();
+        let c = T::from_f64( phi.cos() ).unwrap();
+        
+
+
+        println!("\n givens2: target {} \n", target);
+        println!("\n givens2: target2 {} \n", target2);
+
+        println!("\n givens2: cos {}, c {:?}, s {:?} \n", d, c, s);
+        
+        G[[i, j]] = c;
+        G[[i + 1, j + 1]] = c;
+        G[[i, j + 1]] = s;
+        G[[i + 1, j]] = -s;
+        
+        println!("\n givens2: G is {} \n", G);
+
+        let Gt = G.transpose();
+
+        println!("\n givens2: Gt is {} \n", &G * target);
+
+        println!("\n givens2: Gtt is {} \n", &Gt * target);
+        
+        G
     }
 
 
@@ -1062,41 +1142,32 @@ impl <T: Number> Matrix<T> {
 
 
 
-    pub fn eig() {
-
-        let f = move |x: f64| {
-            let c = (2. as f64).powf(16.);
-            (x * c).round() / c
-        };
-        
-        let rows = 5;
-        let columns = 5;
-        let max = 5.;
-        let mut A: Matrix<f64> = Matrix::rand(rows, columns, max);
-        let t = A.transpose();
-        
-        A = &t * &A;
+    pub fn eig(&self) {
 
         let mut i = 0;
+        let mut B = self.upper_hessenberg();
 
-        let mut B = A.clone();
+        println!("\n start B {} \n", B);
+
+        let f = move |y: T| {
+            let x = T::to_f64(&y).unwrap();
+            let c = (2. as f64).powf(8.);
+            T::from_f64((x * c).round() / c).unwrap()
+        };
 
         while !B.is_upper_triangular() {
-            //println!("\n [{}] \n", i);
-            //println!("\n [{}] A is {} \n", i, A);
-
-            println!("\n B is {} \n", B);
-
-            let mut qr = A.qr();
-            //qr.R.apply(&f);
-            println!("\n R is {} \n", qr.R);
-            let Q: Matrix<f64> = form_Q(&qr.q, A.rows, false);
-            let K: Matrix<f64> = &qr.R * &Q;
-            A = K;
-            B = A.clone();
-            B.apply(&f);
+            let mut qr = B.qr();
+            let Q: Matrix<T> = form_Q(&qr.q, B.rows, false);
+            let K: Matrix<T> = &qr.R * &Q;
+            let mut Y = K.clone();
+            Y.apply(&f);
+            B = K;
             i += 1;
+            println!("\n step {} \n {} \n", i, Y);
         }
+
+        //2 x 2 diagonal blocks ???
+
         //verify eigenvalues live on diagonal
         println!("converged at {}", i);
     }
@@ -2085,8 +2156,6 @@ mod tests {
     };
 
 
-
-    
     
     //jacobi rotations
     //eigenvalues, eigenvectors (singular values, singular vectors)
@@ -2096,12 +2165,85 @@ mod tests {
     //iterative refinement
     //eig for 2x2, 3x3 (for verification) 
     //givens rotations
+    
+
+
+    #[test]
+    fn eig_test() {
+
+        let size = 5;
+
+        let max = 5.;
+
+        let mut A: Matrix<f64> = Matrix::rand(size, size, max);
+        
+        A.eig();
+
+        assert!(false);
+    }
+
+
 
     #[test]
     fn qr_test_solve() {
 
        //solve (verify with lu)
         
+    }
+    
+    //TODO givens QR of upper hessenberg
+
+    //which method is the best ?
+    #[test]
+    fn givens2_test() {
+
+        let size = 3;
+
+        let max = 5.;
+
+        let mut A: Matrix<f64> = Matrix::rand(size, size, max);
+        
+        A[[0, 0]] = 0.;
+        A[[0, 1]] = 0.;
+        A[[0, 2]] = 0.;
+
+        let i = 1;
+
+        let G = A.givens2(i, i);
+
+        let K: Matrix<f64> = &G * &A;
+
+        println!("\n A is {} \n", A);
+        println!("\n G is {} \n", G);
+        println!("\n result is {} \n", K);
+
+        //assert!(false);
+    }
+
+
+    #[test]
+    fn givens_test() {
+
+        let size = 3;
+
+        let max = 5.;
+
+        let mut A: Matrix<f64> = Matrix::rand(size, size, max);
+        
+        let i = 1;
+
+        let (G, inv) = A.givens(i, i);
+
+        let K: Matrix<f64> = &G * &A;
+
+        println!("\n A is {} \n", A);
+        println!("\n G is {} \n", G);
+        println!("\n inv is {} \n", inv);
+        println!("\n I is {}, I2 is {} \n", &inv * &G, &G * &inv);
+
+        println!("\n result is {} \n", K);
+
+        //assert!(false);
     }
 
 
@@ -2158,6 +2300,8 @@ mod tests {
         }
     }
     
+
+
     fn qr_test(i:usize, case:u32) {
 
         let mut rng = rand::thread_rng();
@@ -2248,6 +2392,15 @@ mod tests {
         if R.is_square() { 
             assert!(R.is_upper_triangular(), "R is upper triangular");
         }
+    }
+
+
+
+    #[test] 
+    fn schwarz_inequality() {
+
+
+
     }
 
 
