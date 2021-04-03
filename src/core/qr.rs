@@ -163,20 +163,94 @@ pub fn apply_q_R<T: Number>(R: &Matrix<T>, q: &Vec<Vector<T>>, t: bool) -> Matri
 
 
 
-pub fn givens_qr<T: Number>(A:&Matrix<T>) -> qr<T> {
+pub fn givens_qr_upper_hessenberg<T: Number>(A:&Matrix<T>) -> qr<T> {
+
+    let zero = T::from_f64(0.).unwrap();
 
     let mut R = A.clone();
 
     let mut q: Vec<Vector<T>> = Vec::new();
+    
+    let mut Q: Matrix<T> = Matrix::id(R.rows);
 
-    //givens(zero entry location)
-    //generate givens
-    //low right corner up to diagonal
+    for i in 0..(R.columns - 1) {
+        let theta = R.givens_theta(i + 1, i);
+        let Qn = R.givens(i + 1, i);
+
+        Q = &Qn * &Q; //TODO
+
+        let sin: T = T::from_f64( theta.sin() ).unwrap();
+        let cos: T = T::from_f64( theta.cos() ).unwrap();
+        let mut y: Vector<T> = Vector::new(vec![zero; R.columns]);
+        let mut z: Vector<T> = Vector::new(vec![zero; R.columns]);
+        
+        for k in 0..R.columns {
+            y[k] = R[[i + 1, k]];
+            z[k] = R[[i, k]];
+        }
+
+        for k in 0..A.columns {
+            R[[i, k]] = (cos * z[k]) + (sin * y[k]);
+            R[[i + 1, k]] = (-sin * z[k]) + (cos * y[k]);
+        }
+    }
+
+    let Qt = Q.transpose();
+    
+    qr {
+        Q: Some(Qt),
+        Qt: Some(Q),
+        R,
+        q
+    }
+}
+
+
+
+pub fn givens_qr<T: Number>(A:&Matrix<T>) -> qr<T> {
+
+    let zero = T::from_f64(0.).unwrap();
+    
+    let mut A: Matrix<T> = A.clone();
+
+    let mut q: Vec<Vector<T>> = Vec::new();
+
+    let mut Q: Matrix<T> = Matrix::id(A.rows);
+    
+    for i in (1..A.rows).rev() {
+
+        for j in i..A.rows {
+            let theta = A.givens_theta(j, j - i);
+            let Qn = A.givens(j, j - i);
+
+            Q = &Qn * &Q; //TODO
+
+            let sin: T = T::from_f64( theta.sin() ).unwrap();
+            let cos: T = T::from_f64( theta.cos() ).unwrap();
+            //TODO apply_givens
+            let mut y: Vector<T> = Vector::new(vec![zero; A.columns]);
+            let mut z: Vector<T> = Vector::new(vec![zero; A.columns]);
+
+            for k in 0..A.columns {
+                y[k] = A[[j, k]];
+                z[k] = A[[j - 1, k]];
+            }
+
+            for k in 0..A.columns {
+                A[[j - 1, k]] = (cos * z[k]) + (sin * y[k]);
+                A[[j, k]] = (-sin * z[k]) + (cos * y[k]);
+            }
+        }
+    }
+    
+    //A.apply(&f);
+
+    let Qt = Q.transpose();
 
     qr {
-        Q: None,
-        Qt: None,
-        R,
+        Q: Some(Qt),
+        Qt: Some(Q),
+        R: A,
         q
     }
 }

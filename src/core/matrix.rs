@@ -33,7 +33,7 @@ use num_traits::{Float, Num, NumAssignOps, NumOps, PrimInt, Signed, cast, identi
 use web_sys::Event;
 use crate::{Number, vector, workers::Workers};
 use super::{lu::{block_lu, block_lu_threads_v2, lu, lu_v2}, matrix3::Matrix3, matrix4::Matrix4, multiply::{ multiply_threads, strassen, mul_blocks, get_optimal_depth, decompose_blocks }, 
-qr::{qr, apply_q_R, form_Q, form_P, house_qr, apply_q_b}, solve::{solve_upper_triangular, solve, solve_lower_triangular}, utils::{eq_bound_eps_v, eq_eps_f64}, vector::Vector};
+qr::{qr, givens_qr, givens_qr_upper_hessenberg, apply_q_R, form_Q, form_P, house_qr, apply_q_b}, solve::{solve_upper_triangular, solve, solve_lower_triangular}, utils::{eq_bound_eps_v, eq_eps_f64}, vector::Vector};
 
 /*
 TODO 
@@ -2182,6 +2182,7 @@ mod tests {
     use std::{ f32::EPSILON as EP, f64::EPSILON, f64::consts::PI };
     use crate::{ core::{lu::{block_lu_threads, block_lu_threads_v2, lu}, matrix::{ Matrix }}, matrix, vector };
     use super::{
+        givens_qr_upper_hessenberg, givens_qr,
         apply_q_b, apply_q_R, form_Q, form_P, block_lu, eq_eps_f64, Vector, P_compact, Number,
         get_optimal_depth, eq_bound_eps, multiply, mul_blocks, strassen, decompose_blocks, eq_bound_eps_v
     };
@@ -2194,14 +2195,17 @@ mod tests {
     //pseudo inverse
     //similar form (is similar)
     //iterative refinement
-    //eig for 2x2, 3x3 (for verification) 
-    //givens rotations
+    //power method, inverse iterative method
+    //eig for 2x2, 3x3 (for verification)
+    //is orthonormal test - every vector orthogonal to any other - back up AtA inv
     
 
-
+    
     #[test]
     fn eig_test() {
-
+        //givens qr
+        //shifts
+        //deflation
         let size = 5;
 
         let max = 5.;
@@ -2214,123 +2218,49 @@ mod tests {
     }
 
 
-
+    
+    //TODO givens QR of upper hessenberg
+    //TODO
     #[test]
     fn qr_test_solve() {
 
        //solve (verify with lu)
         
     }
-    
-    //TODO givens QR of upper hessenberg
 
-    //which method is the best ?
-    #[test]
-    fn givens2_test() {
-
-        let size = 3;
-
-        let max = 5.;
-
-        let mut A: Matrix<f64> = Matrix::rand(size, size, max);
-        
-        A[[0, 0]] = 0.;
-        A[[0, 1]] = 0.;
-        A[[0, 2]] = 0.;
-
-        let i = 1;
-
-        let G = A.givens2(i, i);
-
-        let K: Matrix<f64> = &G * &A;
-
-        println!("\n A is {} \n", A);
-        println!("\n G is {} \n", G);
-        println!("\n result is {} \n", K);
-
-        //assert!(false);
-    }
 
 
     #[test]
-    fn givens_test() {
+    fn givens_qr_upper_hessenberg_test() {
 
-        let size = 5;
+        let f = move |x: f64| {
+            let c = (2. as f64).powf(32.);
+            (x * c).round() / c
+        };
 
-        let max = 5.;
-        
+        let size = 20;
+        let max = 2.;
+
         let mut A: Matrix<f64> = Matrix::rand(size, size, max);
-        let mut K = A.clone();
-        
+        let H = A.upper_hessenberg();
+        let qr = givens_qr_upper_hessenberg(&H);
+        let Q = qr.Q.unwrap().clone();
+        let Qt = qr.Qt.unwrap().clone();
+        let QR: Matrix<f64> = &Q * &qr.R;
 
-        for i in (0..A.rows).rev() {
-            println!("\n next {} \n", i);
+        //println!("\n A {}, R {}, Q {}, I {}, QR {}, diff {} \n", A, qr.R, Q, &Qt * &Q, QR, (&H - &QR));
 
-            for j in i..A.rows {
-                
-                let theta = A.givens_theta(j, j - i);
-                let sin = theta.sin();
-                let cos = theta.cos();
-                let row = j;
+        assert!(eq_bound_eps(&H, &QR), "H = QR");
 
+        let mut R = qr.R.clone();
 
-                let mut y: Vector<f64> = Vector::new(vec![0.; A.columns]);
-                let mut z: Vector<f64> = Vector::new(vec![0.; A.columns]);
+        R.apply(&f);
 
-                for k in 0..A.columns {
-                    y[k] = A[[row, k]];
-                    z[k] = A[[row - 1, k]];
-                }
-
-                for k in 0..A.columns {
-                    A[[row - 1, k]] = (cos * z[k]) + (sin * y[k]);
-                    A[[row, k]] = (-sin * z[k]) + (cos * y[k]);
-                }
-
-                //println!("\n A is {} \n", A);
-                
-                //println!("\n ({},{}) \n", i + c, c);
-
-                let G = K.givens(j, j - i);
-
-                K = &G * &K;
-
-                println!("\n A next is {}, K is {} \n", A, K);
-                
-            }
-        }
-
-
-        
-        /*
-        for j in (1..size).rev() {
-
-            for i in 0..(size - 1) {
-
-                let G = A.givens(i + j, i);
-
-                A = &G * &A;
-
-                println!("\n A next is {}, G is {} \n", A, G);
-
-            }
-        }
-        */
-
-        //let G = A.givens(2, 1);
-        //let K: Matrix<f64> = &G * &A;
-        println!("\n A is {} \n", A);
-        //println!("\n G is {} \n", G);
-        //println!("\n inv is {} \n", inv);
-        //println!("\n I is {}, I2 is {} \n", &inv * &G, &G * &inv);
-
-        //println!("\n result is {} \n", K);
-
-        assert!(false);
+        assert!(R.is_upper_triangular(), "R.is_upper_triangular()");
     }
 
 
-    
+
     #[test]
     fn lower_hessenberg_test() {
 
@@ -2368,6 +2298,14 @@ mod tests {
 
 
 
+    #[derive(PartialEq)]
+    enum qr_strategy {
+        house,
+        givens
+    }
+
+
+
     #[test]
     fn qr_test1() {
         
@@ -2376,19 +2314,24 @@ mod tests {
         let mut rng = rand::thread_rng();
         
         for i in 2..test {
-            qr_test(i, 0);
-            qr_test(i, 1);
-            qr_test(i, 2);
-            qr_test(i, 3);
+            qr_test(i, 0, qr_strategy::house);
+            qr_test(i, 1, qr_strategy::house);
+            qr_test(i, 2, qr_strategy::house);
+            qr_test(i, 3, qr_strategy::house);
+        }
+
+        for i in 2..test {
+            qr_test(i, 0, qr_strategy::givens);
+            qr_test(i, 1, qr_strategy::givens);
         }
     }
     
+    
 
-
-    fn qr_test(i:usize, case:u32) {
+    fn qr_test(i:usize, case:u32, strategy:qr_strategy) {
 
         let mut rng = rand::thread_rng();
-
+        
         let f = move |x: f64| {
             let c = (2. as f64).powf(32.);
             (x * c).round() / c
@@ -2415,14 +2358,19 @@ mod tests {
 
         println!("qr_test({}): case {} -> A({},{}), A rank {}, n {}, size {} \n", i, case, A.rows, A.columns, A.rank(), n, size);
 
-        let mut qr = A.qr();
-        
         println!("\n A({},{}) {} \n", A.rows, A.columns, A);
 
+        let mut qr = if strategy == qr_strategy::house { A.qr() } else { givens_qr(&A) };
+
+        if strategy == qr_strategy::house {
+            qr.Q = Some(form_Q(&qr.q, A.rows, false));
+            qr.Qt = Some(form_Q(&qr.q, A.rows, true));
+        }
+
+        let Q = qr.Q.unwrap();
+        let Qt = qr.Qt.unwrap();
         let mut R = qr.R.clone();
 
-        let Q: Matrix<f64> = form_Q(&qr.q, A.rows, false);
-        let Qt: Matrix<f64> = form_Q(&qr.q, A.rows, true);
         let b: Vector<f64> = Vector::rand(R.rows as u32, max);
 
         R.apply(&f);
@@ -2431,27 +2379,30 @@ mod tests {
         println!("\n R({},{}) {} \n", R.rows, R.columns, R);
 
         println!("\n R is {} \n", R);
-        
-        let QR: Matrix<f64> = &Q * &qr.R;
-        let qb = apply_q_b(&qr.q, &b, false);
-        let qtb = apply_q_b(&qr.q, &b, true);
-        let Qb = &Q * &b;
-        let Qtb = &Qt * &b;
-        
+
         assert_eq!(A.rows, R.rows, "A.rows = R.rows");
         assert_eq!(A.columns, R.columns, "A.columns = R.columns");
+        
+        let QR: Matrix<f64> = &Q * &qr.R;
 
-        assert!(eq_bound_eps_v(&qb, &Qb), "qb, Qb");
-        assert!(eq_bound_eps_v(&qtb, &Qtb), "qtb, Qtb");
+        if strategy == qr_strategy::house {
+            let Qb = &Q * &b;
+            let Qtb = &Qt * &b;
+            let qb = apply_q_b(&qr.q, &b, false);
+            let qtb = apply_q_b(&qr.q, &b, true);
+            
+            assert!(eq_bound_eps_v(&qb, &Qb), "qb, Qb");
+            assert!(eq_bound_eps_v(&qtb, &Qtb), "qtb, Qtb");
 
-        let l = qr.q.len();
+            let l = qr.q.len();
 
-        let ps: Vec<Matrix<f64>> = qr.q.clone().iter_mut().map(|v| { form_P(v, R.rows, true) }).collect();
+            let ps: Vec<Matrix<f64>> = qr.q.clone().iter_mut().map(|v| { form_P(v, R.rows, true) }).collect();
 
-        for i in 0..ps.len() {
-            let P = &ps[i];
-            println!("\n P({}) is {} \n", i, P);
-            assert!(P.is_symmetric(), "P should be symmetric");
+            for i in 0..ps.len() {
+                let P = &ps[i];
+                println!("\n P({}) is {} \n", i, P);
+                assert!(P.is_symmetric(), "P should be symmetric");
+            }
         }
 
         let mut QtQ: Matrix<f64> = &Q * &Qt;
@@ -2461,15 +2412,15 @@ mod tests {
         let id0 = Matrix::id(QtQ.rows);
 
         println!("\n QtQ {} \n", QtQ);
-        
-        let mut QR2: Matrix<f64> = apply_q_R(&qr.R, &qr.q, false);
-
         println!("\n QR {} \n", QR);
-
-        println!("\n QR2 {} \n", QR2);
-        
         assert_eq!(QtQ, id0, "QtQ == id");
-        assert!(eq_bound_eps(&QR, &QR2), "QR = QR2");
+
+        if strategy == qr_strategy::house {
+            let mut QR2: Matrix<f64> = apply_q_R(&qr.R, &qr.q, false);
+            println!("\n QR2 {} \n", QR2);
+            assert!(eq_bound_eps(&QR, &QR2), "QR = QR2");
+        }
+
         assert!(eq_bound_eps(&A, &QR), "A = QR");
 
         if R.is_square() { 
