@@ -163,6 +163,26 @@ pub fn apply_q_R<T: Number>(R: &Matrix<T>, q: &Vec<Vector<T>>, t: bool) -> Matri
 
 
 
+pub fn givens_qr<T: Number>(A:&Matrix<T>) -> qr<T> {
+
+    let mut R = A.clone();
+
+    let mut q: Vec<Vector<T>> = Vec::new();
+
+    //givens(zero entry location)
+    //generate givens
+    //low right corner up to diagonal
+
+    qr {
+        Q: None,
+        Qt: None,
+        R,
+        q
+    }
+}
+
+
+
 pub fn house_qr<T: Number>(A:&Matrix<T>) -> qr<T> {
 
     let zero = T::from_f64(0.).unwrap();
@@ -175,7 +195,7 @@ pub fn house_qr<T: Number>(A:&Matrix<T>) -> qr<T> {
 
     let m = min(A.columns, A.rows) - 1;
 
-    
+
 
     for i in 0..m {
 

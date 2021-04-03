@@ -1000,6 +1000,36 @@ impl <T: Number> Matrix<T> {
 
 
 
+    pub fn givens_theta(&self, i: usize, j: usize) -> f64 {
+        let m = self[[i, j]];
+        let d = self[[i - 1, j]];
+        let x: f64 = T::to_f64(&(m / d)).unwrap();
+        let theta = x.atan();
+        theta
+    }
+
+
+
+    pub fn givens(&self, i: usize, j: usize) -> Matrix<T> {
+        
+        let mut G: Matrix<T> = Matrix::id(self.rows);
+        
+        let theta = self.givens_theta(i, j);
+        let s = T::from_f64( theta.sin() ).unwrap();
+        let c = T::from_f64( theta.cos() ).unwrap();
+        
+        G[[i - 1, i - 1]] = c;
+        G[[i, i - 1]] = -s;
+        G[[i - 1, i]] = s;
+        G[[i, i]] = c;
+        
+        G
+    }
+
+
+
+    /*
+    inverse
     pub fn givens(&self, i: usize, j: usize) -> (Matrix<T>, Matrix<T>) {
 
         assert!(i > 0, "givens: i > 0");
@@ -1034,6 +1064,7 @@ impl <T: Number> Matrix<T> {
         
         (G, inv)
     }
+    */
 
 
 
@@ -2177,9 +2208,9 @@ mod tests {
 
         let mut A: Matrix<f64> = Matrix::rand(size, size, max);
         
-        A.eig();
+        //A.eig();
 
-        assert!(false);
+        //assert!(false);
     }
 
 
@@ -2224,26 +2255,78 @@ mod tests {
     #[test]
     fn givens_test() {
 
-        let size = 3;
+        let size = 5;
 
         let max = 5.;
-
-        let mut A: Matrix<f64> = Matrix::rand(size, size, max);
         
-        let i = 1;
+        let mut A: Matrix<f64> = Matrix::rand(size, size, max);
+        let mut K = A.clone();
+        
 
-        let (G, inv) = A.givens(i, i);
+        for i in (0..A.rows).rev() {
+            println!("\n next {} \n", i);
 
-        let K: Matrix<f64> = &G * &A;
+            for j in i..A.rows {
+                
+                let theta = A.givens_theta(j, j - i);
+                let sin = theta.sin();
+                let cos = theta.cos();
+                let row = j;
 
+
+                let mut y: Vector<f64> = Vector::new(vec![0.; A.columns]);
+                let mut z: Vector<f64> = Vector::new(vec![0.; A.columns]);
+
+                for k in 0..A.columns {
+                    y[k] = A[[row, k]];
+                    z[k] = A[[row - 1, k]];
+                }
+
+                for k in 0..A.columns {
+                    A[[row - 1, k]] = (cos * z[k]) + (sin * y[k]);
+                    A[[row, k]] = (-sin * z[k]) + (cos * y[k]);
+                }
+
+                //println!("\n A is {} \n", A);
+                
+                //println!("\n ({},{}) \n", i + c, c);
+
+                let G = K.givens(j, j - i);
+
+                K = &G * &K;
+
+                println!("\n A next is {}, K is {} \n", A, K);
+                
+            }
+        }
+
+
+        
+        /*
+        for j in (1..size).rev() {
+
+            for i in 0..(size - 1) {
+
+                let G = A.givens(i + j, i);
+
+                A = &G * &A;
+
+                println!("\n A next is {}, G is {} \n", A, G);
+
+            }
+        }
+        */
+
+        //let G = A.givens(2, 1);
+        //let K: Matrix<f64> = &G * &A;
         println!("\n A is {} \n", A);
-        println!("\n G is {} \n", G);
-        println!("\n inv is {} \n", inv);
-        println!("\n I is {}, I2 is {} \n", &inv * &G, &G * &inv);
+        //println!("\n G is {} \n", G);
+        //println!("\n inv is {} \n", inv);
+        //println!("\n I is {}, I2 is {} \n", &inv * &G, &G * &inv);
 
-        println!("\n result is {} \n", K);
+        //println!("\n result is {} \n", K);
 
-        //assert!(false);
+        assert!(false);
     }
 
 
