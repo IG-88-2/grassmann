@@ -18,6 +18,7 @@ wasm-bindgen-futures = "0.4.20"
 wasm-bindgen-test = "0.3.20"
 rand = { version = "0.7.3", features = ["wasm-bindgen"] }
 byteorder = "1.4.2"
+num-complex = "0.3.1"
 
 [dependencies.web-sys]
 version = "0.3.46"

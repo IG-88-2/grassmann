@@ -61,6 +61,7 @@ dependencies = [
  "console_error_panic_hook",
  "js-sys",
  "num",
+ "num-complex",
  "num-traits",
  "num_cpus",
  "rand",

@@ -2386,14 +2386,22 @@ mod tests {
     };
     
     //eigenvalues, eigenvectors (singular values, singular vectors)
-    //power method, inverse iterative method
+    //power method, inverse iteration
     //svd
     //jacobi rotations
     //pseudo inverse
     //iterative refinement
     
+
+    //easier way to find eigenvectors ???
+
     
-    
+    //pathological cases - cyclic permutation matrix, rotation 2x2, 3x3, 4x4 etc 
+    //complex numbers
+    //double shift
+    //exceptional shifts
+    //wilkinson shift - eigenvalues of 2x2 trailing submatrix, the one closer to d (hyp eigenvalue) 
+    //when wilkinson shift complex 
     #[test]
     fn eig_test() {
 
