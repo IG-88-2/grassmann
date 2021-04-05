@@ -114,6 +114,15 @@ impl <T:Number> Vector <T> {
     }
 
 
+
+    pub fn zeros(l:usize) -> Vector<T> {
+        let zero = T::from_f64(0.).unwrap();
+        let v = vec![zero;l];
+        Vector::new(v)
+    }
+
+
+
     //TODO
     pub fn wedge() {
 

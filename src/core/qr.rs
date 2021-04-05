@@ -163,100 +163,6 @@ pub fn apply_q_R<T: Number>(R: &Matrix<T>, q: &Vec<Vector<T>>, t: bool) -> Matri
 
 
 
-pub fn givens_qr_upper_hessenberg<T: Number>(A:&Matrix<T>) -> qr<T> {
-
-    let zero = T::from_f64(0.).unwrap();
-
-    let mut R = A.clone();
-
-    let mut q: Vec<Vector<T>> = Vec::new();
-    
-    let mut Q: Matrix<T> = Matrix::id(R.rows);
-
-    for i in 0..(R.columns - 1) {
-        let theta = R.givens_theta(i + 1, i);
-        let Qn = R.givens(i + 1, i);
-
-        Q = &Qn * &Q; //TODO
-
-        let sin: T = T::from_f64( theta.sin() ).unwrap();
-        let cos: T = T::from_f64( theta.cos() ).unwrap();
-        let mut y: Vector<T> = Vector::new(vec![zero; R.columns]);
-        let mut z: Vector<T> = Vector::new(vec![zero; R.columns]);
-        
-        for k in 0..R.columns {
-            y[k] = R[[i + 1, k]];
-            z[k] = R[[i, k]];
-        }
-
-        for k in 0..A.columns {
-            R[[i, k]] = (cos * z[k]) + (sin * y[k]);
-            R[[i + 1, k]] = (-sin * z[k]) + (cos * y[k]);
-        }
-    }
-
-    let Qt = Q.transpose();
-    
-    qr {
-        Q: Some(Qt),
-        Qt: Some(Q),
-        R,
-        q
-    }
-}
-
-
-
-pub fn givens_qr<T: Number>(A:&Matrix<T>) -> qr<T> {
-
-    let zero = T::from_f64(0.).unwrap();
-    
-    let mut A: Matrix<T> = A.clone();
-
-    let mut q: Vec<Vector<T>> = Vec::new();
-
-    let mut Q: Matrix<T> = Matrix::id(A.rows);
-    
-    for i in (1..A.rows).rev() {
-
-        for j in i..A.rows {
-            let theta = A.givens_theta(j, j - i);
-            let Qn = A.givens(j, j - i);
-
-            Q = &Qn * &Q; //TODO
-
-            let sin: T = T::from_f64( theta.sin() ).unwrap();
-            let cos: T = T::from_f64( theta.cos() ).unwrap();
-            //TODO apply_givens
-            let mut y: Vector<T> = Vector::new(vec![zero; A.columns]);
-            let mut z: Vector<T> = Vector::new(vec![zero; A.columns]);
-
-            for k in 0..A.columns {
-                y[k] = A[[j, k]];
-                z[k] = A[[j - 1, k]];
-            }
-
-            for k in 0..A.columns {
-                A[[j - 1, k]] = (cos * z[k]) + (sin * y[k]);
-                A[[j, k]] = (-sin * z[k]) + (cos * y[k]);
-            }
-        }
-    }
-    
-    //A.apply(&f);
-
-    let Qt = Q.transpose();
-
-    qr {
-        Q: Some(Qt),
-        Qt: Some(Q),
-        R: A,
-        q
-    }
-}
-
-
-
 pub fn house_qr<T: Number>(A:&Matrix<T>) -> qr<T> {
 
     let zero = T::from_f64(0.).unwrap();
@@ -317,6 +223,206 @@ pub fn house_qr<T: Number>(A:&Matrix<T>) -> qr<T> {
         Q: None,
         Qt: None,
         R,
+        q
+    }
+}
+
+
+
+pub fn apply_q_t_givens_hess<T: Number>(m: &mut Matrix<T>, i: usize, theta: f64) {
+
+    let zero = T::from_f64(0.).unwrap();
+    let s: T = T::from_f64( theta.sin() ).unwrap();
+    let c: T = T::from_f64( theta.cos() ).unwrap();
+
+    let mut y: Vector<T> = Vector::new(vec![zero; m.columns]);
+    let mut z: Vector<T> = Vector::new(vec![zero; m.columns]);
+    
+    for k in 0..m.columns {
+        y[k] = m[[k, i + 1]];
+        z[k] = m[[k, i]];
+    }
+
+    for k in 0..m.columns {
+        m[[k, i]] = (c * z[k]) + (s * y[k]);
+        m[[k, i + 1]] = (-s * z[k]) + (c * y[k]);
+    }
+}
+
+
+
+pub fn apply_q_givens_hess<T: Number>(m: &mut Matrix<T>, i: usize, theta: f64) {
+
+    let zero = T::from_f64(0.).unwrap();
+    let s: T = T::from_f64( theta.sin() ).unwrap();
+    let c: T = T::from_f64( theta.cos() ).unwrap();
+
+    let mut y: Vector<T> = Vector::new(vec![zero; m.columns]);
+    let mut z: Vector<T> = Vector::new(vec![zero; m.columns]);
+    
+    for k in 0..m.columns {
+        y[k] = m[[i + 1, k]];
+        z[k] = m[[i, k]];
+    }
+
+    for k in 0..m.columns {
+        m[[i, k]] = (c * z[k]) + (s * y[k]);
+        m[[i + 1, k]] = (-s * z[k]) + (c * y[k]);
+    }
+}
+
+
+
+pub fn apply_Qt_givens_hess<T: Number>(A: &mut Matrix<T>, q: &Vec<(usize, f64)>) {
+
+    let zero = T::from_f64(0.).unwrap();
+    
+    for j in 0..q.len() {
+        let (i, theta) = q[j];
+        apply_q_t_givens_hess(A, i, theta);
+    }
+}
+
+
+
+pub fn apply_Q_givens_hess<T: Number>(A: &mut Matrix<T>, q: &Vec<(usize, f64)>) {
+
+    let zero = T::from_f64(0.).unwrap();
+    
+    for j in 0..q.len() {
+        let (i, theta) = q[j];
+        apply_q_givens_hess(A, i, theta);
+    }
+}
+
+
+
+pub fn form_Qt_givens_hess<T: Number>(q: &Vec<(usize, f64)>) -> Matrix<T> {
+
+    let zero = T::from_f64(0.).unwrap();
+    let mut Qt: Matrix<T> = Matrix::id(q.len() + 1);
+
+    for j in 0..q.len() {
+        let (i, theta) = q[j];
+        apply_q_t_givens_hess(&mut Qt, i, theta);
+    }
+
+    Qt
+}
+
+
+
+pub fn form_Q_givens_hess<T: Number>(q: &Vec<(usize, f64)>) -> Matrix<T> {
+
+    let zero = T::from_f64(0.).unwrap();
+    let mut Q: Matrix<T> = Matrix::id(q.len() + 1);
+
+    for j in 0..q.len() {
+        let (i, theta) = q[j];
+        apply_q_givens_hess(&mut Q, i, theta);
+    }
+
+    Q
+}
+
+
+
+pub fn givens_qr_upper_hessenberg<T: Number>(A:&Matrix<T>) -> ( Matrix<T>, Vec<(usize, f64)> ) {
+    
+    let zero = T::from_f64(0.).unwrap();
+
+    let mut R = A.clone();
+    
+    let mut q: Vec<(usize, f64)> = Vec::new();
+    
+    for i in 0..(R.columns - 1) {
+
+        let theta = R.givens_theta(i + 1, i);
+
+        apply_q_givens_hess(&mut R, i, theta);
+
+        let t = (i, theta);
+
+        q.push(t);
+    }
+    
+    (R, q)
+}
+
+
+
+pub fn apply_q_givens<T: Number>(m: &mut Matrix<T>, j: usize, theta: f64) {
+
+    let zero = T::from_f64(0.).unwrap();
+    let sin: T = T::from_f64( theta.sin() ).unwrap();
+    let cos: T = T::from_f64( theta.cos() ).unwrap();
+    
+    let mut y: Vector<T> = Vector::new(vec![zero; m.columns]);
+    let mut z: Vector<T> = Vector::new(vec![zero; m.columns]);
+    
+    for k in 0..m.columns {
+        y[k] = m[[j, k]];
+        z[k] = m[[j - 1, k]];
+    }
+    
+    for k in 0..m.columns {
+        m[[j - 1, k]] = (cos * z[k]) + (sin * y[k]);
+        m[[j, k]] = (-sin * z[k]) + (cos * y[k]);
+    }
+}
+
+
+
+pub fn form_Q_givens<T: Number>(A:&Matrix<T>, q: &Vec<((usize, usize), f64)>) -> Matrix<T> {
+
+    let zero = T::from_f64(0.).unwrap();
+    let mut Q: Matrix<T> = Matrix::id(A.rows);
+
+    for j in 0..q.len() {
+        let (v, theta) = q[j];
+        let (a, b) = v;
+        apply_q_givens(&mut Q, a, theta);
+    }
+
+    Q
+}
+
+
+
+pub fn givens_qr<T: Number>(A:&Matrix<T>) -> qr<T> {
+
+    let zero = T::from_f64(0.).unwrap();
+    
+    let mut A: Matrix<T> = A.clone();
+
+    let mut q: Vec<Vector<T>> = Vec::new();
+
+    let mut Q: Matrix<T> = Matrix::id(A.rows);
+
+    let mut list: Vec<((usize, usize), f64)> = Vec::new();
+    
+    for i in (1..A.rows).rev() {
+
+        for j in i..A.rows {
+
+            let theta = A.givens_theta(j, j - i);
+            
+            let t = ((j, j - i), theta);
+
+            list.push(t);
+
+            apply_q_givens(&mut A, j, theta);
+        }
+    }
+
+    let Q: Matrix<T> = form_Q_givens(&A, &list);
+    
+    let Qt = Q.transpose();
+
+    qr {
+        Q: Some(Qt),
+        Qt: Some(Q),
+        R: A,
         q
     }
 }
