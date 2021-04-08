@@ -87,7 +87,7 @@ next x = x - u (shifting x towards better accuracy)
 //diag
 //identity
 //vandermonde
-
+//matrix norm 2 norm 
 //perspective
 //rotation
 //reflection
@@ -1340,7 +1340,7 @@ impl <T: Number> Matrix<T> {
                A = &A + S.as_ref().unwrap();
             }
 
-            println!("\n step {} \n", i);
+            //println!("\n step {} \n", i);
             
             //println!("\n step {} \n {} \n", i, A);
         }
@@ -2392,10 +2392,9 @@ mod tests {
     //pseudo inverse
     //iterative refinement
     
-
     //easier way to find eigenvectors ???
-
     
+    //eigenvectors decomposition QVQt
     //pathological cases - cyclic permutation matrix, rotation 2x2, 3x3, 4x4 etc 
     //complex numbers
     //double shift
@@ -2459,7 +2458,7 @@ mod tests {
 
 
 
-    //TODO
+    //TODO move to matrix2
     //#[test]
     fn eig2x2_test() {
 
