@@ -1,6 +1,6 @@
 #![feature(layout_for_ptr)]
 //http://www.hpcavf.uclan.ac.uk/softwaredoc/sgi_scsl_html/sgi_html/ch03.html#ag5Plchri
-use std::{any::TypeId, cell::RefCell, cmp::min, f32::EPSILON, future::Future, mem::*, pin::Pin, rc::Rc, task::{Context, Poll}, time::Instant};
+use std::{any::TypeId, cell::RefCell, cmp::min, f32::EPSILON, f64::NAN, future::Future, mem::*, pin::Pin, rc::Rc, task::{Context, Poll}, time::Instant};
 use std::{
     collections::HashMap, 
     fmt,
@@ -46,6 +46,7 @@ workers bounded by hardware concurrency
 reuse workers
 spread available work through workers, establish queue
 */
+//complex numbers!
 //monte carlo
 //kalman filter
 //spectral decomposition
@@ -297,7 +298,7 @@ impl <T: Number> Matrix<T> {
     //drop cross ?
 
     pub fn lps(&self, n: usize) -> Matrix<T> {
-        let mut A = Matrix::id(n);
+        let mut A = Matrix::new(n, n);
 
         for i in 0..n {
             for j in 0..n {
@@ -443,7 +444,7 @@ impl <T: Number> Matrix<T> {
 
 
     pub fn solve(&self, b: &Vector<T>, lu: &lu<T>) -> Option<Vector<T>> {
-        solve(b, lu)
+        solve(b, lu, f32::EPSILON as f64)
     }
 
 
@@ -1254,15 +1255,16 @@ impl <T: Number> Matrix<T> {
     pub fn eigenvectors(&self, q: &Vec<f64>) -> Vec<(f64, Vector<T>)> {
 
         let mut result: Vec<(f64, Vector<T>)> = Vec::new();
+
         let b: Vector<T> = Vector::zeros(self.columns);
 
-        println!("\n eigenvectors start b {}, rank {} \n", b, self.rank());
+        //println!("\n eigenvectors start b {}, rank {} \n", b, self.rank());
 
         for i in 0..q.len() {
 
             let A: Matrix<T> = self - &(Matrix::id(self.rows) * T::from_f64(q[i]).unwrap());
 
-            println!("\n ({}) - {} \n", i, A.rank());
+            //println!("\n ({}) - {} \n", i, A.rank());
             
             let lu = A.lu();
 
@@ -1279,79 +1281,152 @@ impl <T: Number> Matrix<T> {
 
 
 
+    /*
+    let f = move |y: T| {
+        let x = T::to_f64(&y).unwrap();
+        let c = (2. as f64).powf(8.);
+        T::from_f64((x * c).round() / c).unwrap()
+    };
+    */
+
+
+
+    //TODO
+    //for symmetric matrix eigenvectors should be inside Q (verify against LU)
+    //TODO
+    //refactor - no lps, send whole matrix and boundaries to subroutines 
+    //exceptional shifts ? 
+    //double shift ?
     pub fn eig(&self, precision: f64, steps: i32) -> Vec<f64> {
         
         assert!(self.rows == self.columns, "eig: A should be square");
+        
+        let s = 2;
 
-        let f = move |y: T| {
-            let x = T::to_f64(&y).unwrap();
-            let c = (2. as f64).powf(8.);
-            T::from_f64((x * c).round() / c).unwrap()
-        };
+        let w = true;
 
         let zero = T::from_f64(0.).unwrap();
-        let s = 2; //(steps / 2) / self.rows as i32;
+        
         let mut A = self.upper_hessenberg();
+
         let mut q = Vec::new();
+
+        let mut x = zero;
+
+
 
         for i in 0..steps {
 
             if A.rows <= 1 && A.columns <= 1 {
                let d = T::to_f64(&A[[0, 0]]).unwrap();
                q.push(d);
+               //let (mut R, q) = givens_qr_upper_hessenberg(A);
+               //let Q: Matrix<T> = form_Qt_givens_hess(&q);
                break;
             }
-            
-            let mut S = None;
 
             if i > 0 && (i % s) == 0 {
                 let k = A.rows - 2;
+
+                let a = T::to_f64(&A[[k, k]]).unwrap();
+                let b = T::to_f64(&A[[k, k + 1]]).unwrap();
                 let c = T::to_f64(&A[[k + 1, k]]).unwrap();
                 let d = T::to_f64(&A[[k + 1, k + 1]]).unwrap();
+                
                 let u = c.abs();
+                
+                if u < precision {
 
-                if u <= precision {
                     q.push(d);
+
                     A = A.lps(A.rows - 1);
+
                 } else {
-                    S = Some(
-                        Matrix::id(A.rows) * T::from_f64(d).unwrap()
-                    );
+
+                    if w {
+                        let l = matrix![f64, 
+                            a, b;
+                            c, d;
+                        ];
+
+                        let r = Matrix::<f64>::eig2x2(&l);
+
+                        if r.is_none() {
+
+                            x = T::from_f64(d).unwrap();
+
+                        } else {
+                            
+                            let (e1, e2) = r.unwrap();
+
+                            let d1 = e1 - d;
+
+                            let d2 = e2 - d;
+
+                            if d1.abs() < d2.abs() {
+                                x = T::from_f64(e1).unwrap();
+                            } else {
+                                x = T::from_f64(e2).unwrap();
+                            }
+                        }
+                    } else {
+                        x = T::from_f64(d).unwrap();
+                    }
                 }
             }
             
-            if S.is_some() {
-               A = &A - S.as_ref().unwrap();
+            if x != zero {
+                for j in 0..A.rows {
+                    A[[j, j]] -= x;
+                }
             }
             
-            let (mut R, q) = givens_qr_upper_hessenberg(&A);
-            
+            let (mut R, q) = givens_qr_upper_hessenberg(A);
+
             apply_Qt_givens_hess(&mut R, &q);
-
-            //TODO test with particular matrix
-
-            //let Q: Matrix<T> = form_Qt_givens_hess(&q); 
-            
-            //A = &R * &Q;
             
             A = R;
-
-            if S.is_some() {
-               A = &A + S.as_ref().unwrap();
-            }
-
-            //println!("\n step {} \n", i);
             
-            //println!("\n step {} \n {} \n", i, A);
+            if x != zero {
+                for j in 0..A.rows {
+                    A[[j, j]] += x;
+                }
+            }
+            
+            x = zero;
         }
-        
-        //let mut Y = A.clone();
-
-        //Y.apply(&f);
-
-        //println!("\n result \n {} \n", Y);
 
         q
+    }
+
+
+
+    pub fn eig_decompose(&self) -> Option<(Matrix<T>, Matrix<T>, Matrix<T>)> {
+        
+        let precision = f32::EPSILON as f64;
+        let steps = 1000;
+        let mut q = self.eig(precision, steps);
+        let v = self.eigenvectors(&q);
+        
+        let ps: Vec<T> = v.iter().map(|t| { T::from_f64(t.0).unwrap() }).collect();
+        let ps: Vector<T> = Vector::new(ps);
+        let vs: Vec<Vector<T>> = v.iter().map(|t| { t.1.clone() }).collect();
+
+        let mut L: Matrix<T> = Matrix::new(self.rows, self.columns);
+
+        L.set_diag(ps);
+        
+        let Y = Matrix::from_basis(vs);
+        let lu = Y.lu();
+        let Y_inv = Y.inv(&lu);
+
+        if Y_inv.is_none() {
+           return None;
+        }
+
+        let Y_inv = Y_inv.unwrap();
+
+        Some((Y, L, Y_inv))
     }
 
 
@@ -1361,8 +1436,6 @@ impl <T: Number> Matrix<T> {
         assert!(self.is_square(), "upper_hessenberg: A should be square");
 
         let zero = T::from_f64(0.).unwrap();
-
-        let one = T::from_f64(1.).unwrap();
         
         let mut K = self.clone();
         
@@ -1733,7 +1806,7 @@ impl <T: Number> Matrix<T> {
 
 
 
-    pub fn eig2x2(m:&Matrix<f64>) -> (f64, f64) {
+    pub fn eig2x2(m:&Matrix<f64>) -> Option<(f64, f64)> {
 
         let t = m.trace();
         
@@ -1743,20 +1816,17 @@ impl <T: Number> Matrix<T> {
         let c = m[[1, 0]];
 
         let d = a * d - b * c;
-        //let d2 = m.det();
-
-        //println!("\n d {} d2 {} \n", d, d2);
 
         let r = t.powf(2.) - 4. * d;
 
         if r < 0. {
-            return (0., 0.);
+            return None;
         }
 
         let y1 = (t + r.sqrt()) / 2.;
         let y2 = (t - r.sqrt()) / 2.;
 
-        (y1, y2)
+        Some((y1, y2))
     }
 
 
@@ -1780,7 +1850,12 @@ impl <T: Number> Matrix<T> {
 
     
 
-    //TODO
+    pub fn jacobi() {
+
+    }
+
+
+
     pub fn wedge() {
 
     }
@@ -1846,7 +1921,7 @@ fn scale <T:Number>(m: &mut Matrix<T>, n: T) -> &mut Matrix<T> {
 
 
 
-fn eq_bound_eps<T: Number>(a: &Matrix<T>, b: &Matrix<T>) -> bool {
+fn eq_bound<T: Number>(a: &Matrix<T>, b: &Matrix<T>, bound: f64) -> bool {
     
     if a.rows != b.rows || a.columns != b.columns {
        return false;
@@ -1856,13 +1931,20 @@ fn eq_bound_eps<T: Number>(a: &Matrix<T>, b: &Matrix<T>) -> bool {
         for j in 0..a.columns {
             let d = a[[i,j]] - b[[i,j]];
             let dd: f64 = T::to_f64(&d).unwrap();
-            if (dd).abs() > EPSILON as f64 {
+            if (dd).abs() > bound {
                 return false;
             }
         } 
     }
     
     true
+}
+
+
+
+fn eq_bound_eps<T: Number>(a: &Matrix<T>, b: &Matrix<T>) -> bool {
+    
+    eq_bound(a, b, EPSILON as f64)
 }
 
 
@@ -2380,69 +2462,18 @@ mod tests {
     use std::{ f32::EPSILON as EP, f64::EPSILON, f64::consts::PI };
     use crate::{ core::{lu::{block_lu_threads, block_lu_threads_v2, lu}, matrix::{ Matrix }}, matrix, vector };
     use super::{
-        givens_qr_upper_hessenberg, givens_qr, form_Qt_givens_hess, form_Q_givens_hess,
+        givens_qr_upper_hessenberg, givens_qr, form_Qt_givens_hess, form_Q_givens_hess, Matrix4,
         apply_q_b, apply_q_R, form_Q, form_P, block_lu, eq_eps_f64, Vector, P_compact, Number,
-        get_optimal_depth, eq_bound_eps, multiply, mul_blocks, strassen, decompose_blocks, eq_bound_eps_v
+        get_optimal_depth, eq_bound_eps, eq_bound, multiply, mul_blocks, strassen, decompose_blocks, eq_bound_eps_v
     };
-    
-    //eigenvalues, eigenvectors (singular values, singular vectors)
-    //power method, inverse iteration
-    //svd
-    //jacobi rotations
-    //pseudo inverse
-    //iterative refinement
-    
-    //easier way to find eigenvectors ???
-    
-    //eigenvectors decomposition QVQt
-    //pathological cases - cyclic permutation matrix, rotation 2x2, 3x3, 4x4 etc 
-    //complex numbers
-    //double shift
-    //exceptional shifts
-    //wilkinson shift - eigenvalues of 2x2 trailing submatrix, the one closer to d (hyp eigenvalue) 
-    //when wilkinson shift complex 
-    #[test]
-    fn eig_test() {
-
-        let size = 7;
-        let max = 5.;
-        
-        let mut A: Matrix<f64> = Matrix::rand_diag(size, max);
-        let mut a = A.extract_diag();
-
-        println!("\n {} \n", A);
-
-        let S: Matrix<f64> = Matrix::rand(size, size, max);
-        let K: Matrix<f64> = A.conjugate(&S).unwrap();
-        
-        let precision = (f32::EPSILON * 1000.) as f64;
-        let steps = 100;
-        let mut q = K.eig(precision, steps);
-        
-        q.sort_by(|a, b| b.partial_cmp(a).unwrap());
-        a.data.sort_by(|a, b| b.partial_cmp(a).unwrap());
-
-        println!("\n expected {:?} \n", a.data);
-
-        println!("\n eigenvalues are {:?} \n", q);
-
-        let v = K.eigenvectors(&q);
-
-        for i in 0..v.len() {
-            let next = &v[i].1;
-            println!("\n ({}) {} \n", i, next);
-        }
-        
-        assert!(false);
-    }
 
 
-    
+
     //TODO
     #[test]
     fn qr_test_solve() {
 
-       //solve (verify with lu)
+        //solve (verify with lu)
         
     }
 
@@ -2454,6 +2485,261 @@ mod tests {
 
 
 
+    }
+    
+
+
+    //jacobi rotations
+    //svd (singular values, singular vectors)
+    //power method, inverse iteration
+    //pseudo inverse
+    //iterative refinement
+
+    
+
+    #[test] 
+    fn jacobi_test() {
+
+        let m = matrix![f64,
+            2.33, 4.52;
+            1.2,  8.95;
+        ];
+
+        let a = m[[0, 0]];
+        let f = m[[0, 1]];
+        let b = m[[1, 0]];
+        let d = m[[1, 1]];
+
+        let x = (a * f - d * b) / (2. * b * f);
+        
+        let theta = x.atan();
+        
+        let c = theta.cos();
+        let s = theta.sin();
+        let R = matrix![f64,
+            c, s;
+           -s, c;
+        ];
+
+        let A = &R * &m;
+
+        println!("\n m is {} \n", m);
+        
+        println!("\n R is {} \n", R);
+
+        println!("\n result is {} \n", A);
+
+        assert!(false);
+    }
+
+
+
+    #[test]
+    fn eigenvectors_test3() {
+
+        let test = 20;
+
+        for i in 2..test {
+            let size = i;
+            let max = 5.;
+            let zero: Vector<f64> = Vector::zeros(size);
+            let mut A: Matrix<f64> = Matrix::rand_diag(size, max);
+            let mut a: Vector<f64> = A.extract_diag();
+            let S: Matrix<f64> = Matrix::rand(size, size, max);
+            let K: Matrix<f64> = A.conjugate(&S).unwrap();
+    
+            let R = K.eig_decompose();
+    
+            if R.is_some() {
+                let (S, Y, S_inv) = R.unwrap();
+                println!("\n K is {} \n", K);
+                println!("\n S is {} \n", S);
+                println!("\n Y is {} \n", Y);
+                println!("\n S_inv is {} \n", S_inv);
+    
+                let P: Matrix<f64> = &(&S * &Y) * &S_inv;
+            
+                let diff = &P - &K;
+                
+                let bound = f32::EPSILON * 10.;
+
+                println!("\n ({})diff {} \n", bound, diff);
+
+                assert!(eq_bound(&K, &P, bound as f64), "\n eigenvectors_test3 K equal to P \n");
+            }
+        }
+    }
+
+
+
+    #[test]
+    fn eigenvectors_test2() {
+        
+        fn round(n:&f64) -> f64 {
+            let c = (2. as f64).powf(8.);
+            (n * c).round() / c
+        }
+
+        let test = 20;
+
+        for i in 2..test {
+            let size = i;
+            let max = 5.;
+            let zero: Vector<f64> = Vector::zeros(size);
+            let mut A: Matrix<f64> = Matrix::rand_diag(size, max);
+            let mut a = A.extract_diag();
+            let S: Matrix<f64> = Matrix::rand(size, size, max);
+            let K: Matrix<f64> = A.conjugate(&S).unwrap();
+            let precision = f32::EPSILON as f64;
+            let steps = 1000;
+            let mut q = K.eig(precision, steps);
+            let v = K.eigenvectors(&q);
+    
+            for i in 0..v.len() {
+                let (e, k) = &v[i];
+                let id: Matrix<f64> = Matrix::id(size);
+                let M: Matrix<f64> = id * *e;
+                let mut y: Vector<f64> = &(&K - &M) * k;
+                y.apply(round);
+                println!("\n y {} \n", y);
+                assert!(eq_bound_eps_v(&zero, &y));
+            }
+        }
+    }
+
+
+    
+    #[test]
+    fn eigenvectors_test1() {
+
+        let test = 20;
+
+        for i in 2..test {
+
+            let size = i;
+        
+            let max = 5.0;
+            
+            let mut K: Matrix<f64> = Matrix::rand_diag(size, max);
+            
+            let precision = f32::EPSILON as f64;
+            
+            let steps = 1000;
+            
+            let q = K.eig(precision, steps);
+            
+            let v = K.eigenvectors(&q);
+    
+            let vs: Vec<Vector<f64>> = v.iter().rev().map(|t| { t.1.clone() }).collect();
+    
+            let y = Matrix::from_basis(vs);
+    
+            let id: Matrix<f64> = Matrix::id(size);
+    
+            assert_eq!(y, id, "y == id");
+        }
+    }
+
+
+
+    #[test]
+    fn eig4() {
+
+        let m = Matrix4::rotation(0.4, 0.3, 0.2);
+        let K: Matrix<f64> = m.into();
+        let K: Matrix<f64> = K.lps(3);
+
+        let precision = f32::EPSILON as f64;
+        let steps = 10000;
+        let mut q = K.eig(precision, steps);
+
+        //why eigenvalues are not empty ?
+
+        println!("\n K is {} \n result 3 is {:?} \n", K, q);
+
+        //assert!(false);
+    }
+
+
+
+    #[test]
+    fn eig3() {
+        
+        let K = matrix![f64,
+            0., 0., 0., 1.;
+            1., 0., 0., 0.;
+            0., 1., 0., 0.;
+            0., 0., 1., 0.;
+        ];
+        let precision = f32::EPSILON as f64;
+        let steps = 1000;
+        let mut q = K.eig(precision, steps);
+
+        println!("\n result 2 is {:?} \n", q);
+    }
+
+
+
+    #[test]
+    fn eig2() {
+        
+        let K = matrix![f64,
+            0., 1.;
+            1., 0.;
+        ];
+        let precision = f32::EPSILON as f64;
+        let steps = 1000;
+        let mut q = K.eig(precision, steps);
+
+        println!("\n result is {:?} \n", q);
+    }
+
+
+
+    #[test]
+    fn eig1() {
+        
+        let test = 20;
+
+        for i in 2..test {
+            eig_test(i);
+        }
+    }
+
+
+
+    fn eig_test(i: usize) {
+
+        println!("\n eig test {} \n", i);
+
+        let f = move |x: &mut f64| -> f64 {
+            let c = (2. as f64).powf(12.);
+            (*x * c).round() / c
+        };
+
+        let size = i;
+        let max = 5.;
+        let mut A: Matrix<f64> = Matrix::rand_diag(size, max);
+        let mut a = A.extract_diag();
+        let S: Matrix<f64> = Matrix::rand(size, size, max);
+        let K: Matrix<f64> = A.conjugate(&S).unwrap();
+        
+        let precision = f32::EPSILON as f64;
+        let steps = 1000;
+        let mut q = K.eig(precision, steps);
+        let mut c = Vector::new(q);
+        
+        c.data = c.data.iter_mut().map(&f).collect();
+        a.data = a.data.iter_mut().map(&f).collect();
+
+        c.data.sort_by(|a, b| b.partial_cmp(a).unwrap());
+        a.data.sort_by(|a, b| b.partial_cmp(a).unwrap());
+        
+        //println!("\n expected {:?} \n", a.data);
+        println!("\n result {:?} \n", c.data);
+        println!("\n equal {} \n", a == c);
+
+        assert_eq!(a, c, "a == c");
     }
 
 
@@ -2467,7 +2753,7 @@ mod tests {
         let id = Matrix::id(2);
         let b = Vector::new(vec![0.,0.]);
         
-        let e = Matrix::<f64>::eig2x2(&m);
+        let e = Matrix::<f64>::eig2x2(&m).unwrap(); //?
 
         println!("\n A is {}, {} \n", m, m.rank());
         println!("\n e is {} {} \n", e.0, e.1);
@@ -2515,8 +2801,7 @@ mod tests {
         let mut A: Matrix<f64> = Matrix::rand(size, size, max);
         let H = A.upper_hessenberg();
 
-        let (R, q) = givens_qr_upper_hessenberg(&H);
-        
+        let (R, q) = givens_qr_upper_hessenberg(H.clone());
         
         let Q = form_Qt_givens_hess(&q);
         let Qt = Q.transpose();
@@ -2668,9 +2953,9 @@ mod tests {
             (x * c).round() / c
         };
 
-        let size = i;
+        let size = i; //5;
         let max = 5.;
-        let mut n = 0;
+        let mut n = 0; //3;
         let mut A: Matrix<f64> = Matrix::rand(size, size, max);
         
         if case == 1 {
@@ -2686,12 +2971,26 @@ mod tests {
             let offset = rng.gen_range(1, size);
             A = Matrix::rand(size, size + offset, max);
         }
+        /*
+        TODO
+        A = matrix![f64,
+            3.989662529213885, 1.3111352510863685, 0.6327979653493032, 1.2585828396533043, 0.792539040178466;
+            4.805035302184294, 3.7402061208531254, 2.9985124817163875, 3.381193980206488, 2.184574576145316;
+            0.10371257771584097, 3.9133316980925663, 4.030820968277014, 3.3811419789265256, 2.2285952196261243;
+            1.2053697910852812, 3.882821367703303, 3.7993293346176085, 3.389835902404731, 2.2240047433478924;
+            0.18136419580157326, 1.6480633417317732, 1.6725567663731522, 1.4283145902435774, 0.9401488909222216;
+        ];
+        */
 
         println!("qr_test({}): case {} -> A({},{}), A rank {}, n {}, size {} \n", i, case, A.rows, A.columns, A.rank(), n, size);
 
         println!("\n A({},{}) {} \n", A.rows, A.columns, A);
 
         let mut qr = A.qr();
+
+        for i in 0..qr.q.len() {
+            println!("\n q({}) is {} \n", i, qr.q[i]);
+        }
         
         qr.Q = Some(form_Q(&qr.q, A.rows, false));
         qr.Qt = Some(form_Q(&qr.q, A.rows, true));
@@ -3748,7 +4047,7 @@ mod tests {
                 println!("\n U A is {} \n L A is {} \n d A is {:?} \n", luA.U, luA.L, luA.d);
                 println!("\n U AtA is {} \n L AtA is {} \n d AtA is {:?} \n", luAtA.U, luAtA.L, luAtA.d);
             }
-            
+            //TODO rank AtA < rank A ??? fix
             assert!(eq1, "rank A and rank AAt should be equivalent");
             assert!(eq2, "rank A and rank AtA should be equivalent");
         }

@@ -89,7 +89,7 @@ pub fn solve_upper_triangular<T:Number>(U:&Matrix<T>, b:&Vector<T>) -> Option<Ve
 
 
 
-pub fn solve<T:Number>(b: &Vector<T>, lu: &lu<T>) -> Option<Vector<T>> {
+pub fn solve<T:Number>(b: &Vector<T>, lu: &lu<T>, tol: f64) -> Option<Vector<T>> {
     let zero = T::from_f64(0.).unwrap();
     let one = T::from_f64(1.).unwrap();
     let Pb: Vector<T> = &lu.P * b;
@@ -127,7 +127,7 @@ pub fn solve<T:Number>(b: &Vector<T>, lu: &lu<T>) -> Option<Vector<T>> {
     
                     let diff = (acc2 - Pb[i]).abs();
                     
-                    if T::to_f32(&diff).unwrap().abs() < f32::EPSILON {
+                    if T::to_f64(&diff).unwrap() < tol {
                         y[i] = zero;
                         continue;
                     } else {
@@ -146,8 +146,6 @@ pub fn solve<T:Number>(b: &Vector<T>, lu: &lu<T>) -> Option<Vector<T>> {
     
     let r = min(lu.U.rows, lu.U.columns) - lu.d.len();
     
-    //println!("\n U is {} \n rhs is {} \n d is {:?} \n indices {:?} \n", lu.U, y, lu.d, indices);
-
     for i in (0..r).rev() {
         let mut acc = y[i];
         let target = indices[i] as usize; 
@@ -163,7 +161,7 @@ pub fn solve<T:Number>(b: &Vector<T>, lu: &lu<T>) -> Option<Vector<T>> {
         if c == zero {
             let diff = (acc - y[i]).abs();
 
-            if T::to_f32(&diff).unwrap().abs() < f32::EPSILON {
+            if T::to_f64(&diff).unwrap() < tol {
                 x[target] = zero;
                 continue;
             } else {

@@ -244,8 +244,8 @@ pub fn apply_q_t_givens_hess<T: Number>(m: &mut Matrix<T>, i: usize, theta: f64)
     }
 
     for k in 0..m.columns {
-        m[[k, i]] = (c * z[k]) + (s * y[k]);
-        m[[k, i + 1]] = (-s * z[k]) + (c * y[k]);
+        m[[k, i]] = c * z[k] + s * y[k];
+        m[[k, i + 1]] = -s * z[k] + c * y[k];
     }
 }
 
@@ -266,8 +266,8 @@ pub fn apply_q_givens_hess<T: Number>(m: &mut Matrix<T>, i: usize, theta: f64) {
     }
 
     for k in 0..m.columns {
-        m[[i, k]] = (c * z[k]) + (s * y[k]);
-        m[[i + 1, k]] = (-s * z[k]) + (c * y[k]);
+        m[[i, k]] = c * z[k] + s * y[k];
+        m[[i + 1, k]] = -s * z[k] + c * y[k];
     }
 }
 
@@ -327,11 +327,11 @@ pub fn form_Q_givens_hess<T: Number>(q: &Vec<(usize, f64)>) -> Matrix<T> {
 
 
 
-pub fn givens_qr_upper_hessenberg<T: Number>(A:&Matrix<T>) -> ( Matrix<T>, Vec<(usize, f64)> ) {
+pub fn givens_qr_upper_hessenberg<T: Number>(A:Matrix<T>) -> ( Matrix<T>, Vec<(usize, f64)> ) {
     
     let zero = T::from_f64(0.).unwrap();
 
-    let mut R = A.clone();
+    let mut R = A;
     
     let mut q: Vec<(usize, f64)> = Vec::new();
     
