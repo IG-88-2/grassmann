@@ -1080,8 +1080,16 @@ impl <T: Number> Matrix<T> {
     pub fn givens_theta(&self, i: usize, j: usize) -> f64 {
         let m = self[[i, j]];
         let d = self[[i - 1, j]];
+
+        //review ??
+        if d == T::from_f64(0.).unwrap() {
+            return 0.;
+        }
+
         let x: f64 = T::to_f64(&(m / d)).unwrap();
+        
         let theta = x.atan();
+
         theta
     }
 
@@ -2608,9 +2616,6 @@ mod tests {
     };
 
 
-
-
-
     
     //power method, inverse iteration
     //iterative refinement
@@ -2637,330 +2642,45 @@ mod tests {
 
     #[test] 
     fn svd_jac1() {
-
-        //AV = UE
-        //A = UEVt
-
+        
         let f = move |x: f64| -> f64 {
             let c = (2. as f64).powf(12.);
             (x * c).round() / c
         };
-
-        let size = 10;
-        let max = 5.;
-        let eps = 0.0000001;
-        let mut A: Matrix<f64> = Matrix::rand(size, size, max);
-        let mut V: Matrix<f64> = Matrix::id(A.rows);
-        let iterations = 10;
-
-        let A_start = A.clone();
-
-        for q in 0..iterations {
-
-            for i in 0..A.columns {
-
-                let c = A.extract_column(i);
-
-                for j in 0..A.columns {
-                    //?
-                    if i == j {
-                        continue;
-                    }
-
-                    let x = A.extract_column(j);
-
-                    let ai_aj: f64 = &c * &x;
-                    let aj_aj: f64 = &c * &c;
-                    let ai_ai: f64 = &x * &x;
-                    
-                    if ai_aj.abs() < eps {
-                       continue;
-                    }
-                    
-                    let z: f64 = ai_aj / (aj_aj - ai_ai);
-                    let t = ((2. * z).atan()) / 2.;
-                    let c = t.cos();
-                    let s = t.sin();
-                    
-                    /*
-                    let w = (aj_aj - ai_ai) / (2. * ai_aj);
-                    let t = w.signum() / (w.abs() + (1. + w.powf(2.)).sqrt()); 
-                    let c = 1. / (1. + t.powf(2.)).sqrt();
-                    let s = c * t;
-                    */
-
-                    let mut R: Matrix<f64> = Matrix::id(A.columns);
-
-                    R[[i, i]] = c;
-                    R[[j, j]] = c;
-
-                    R[[j, i]] = s;
-                    R[[i, j]] = -s;
-
-                    V = &V * &R;
-                    A = &A * &R;
-                }
-            }
-        }
-
-        //svd dimensions rectangular cases
-        //AV = UE
-        //A = UEVt
-        //Ac -> UE
-        
-        println!("\n U 1 {} \n", A);
-        
-        let mut b = A.into_basis();
-        let mut l: Vec<f64> = Vec::new();
-        
-        for p in 0..b.len() {
-            let mut next = &mut b[p];
-            l.push(next.length());
-            next.normalize();
-        }
-
-        let U = Matrix::from_basis(b);
-
-        println!("\n U 2 {} \n", U);
-
-        let v = Vector::new(l);
-        let mut E: Matrix<f64> = Matrix::new(A.rows, A.columns); 
-        E.set_diag(v);
-        
-        let U3 = &U * &E;
-
-        println!("\n U 3 {} \n", U3);
-
-
-
-
-        
-        let Vt = V.transpose();
-
-        let AVt = &A * &Vt;
-
-        let K = &U3 * &Vt;
-
-        println!("\n A start {} \n", A_start);
-        println!("\n A back {} \n", K);
-        println!("\n diff {} \n", &A_start - &K);
-
-        //println!("\n U 3 {} \n", U);
-
-        /*
-        println!("\n A start {} \n", A_start);
-        println!("\n AVt {} \n", AVt);
-        println!("\n diff {} \n", &A_start - &AVt);
-        */
-
-        let Ut = U.transpose();
-        let UtU = &U * &Ut;
-        println!("\n UtU {} \n", UtU);
-
-
-        let At: Matrix<f64> = A.transpose();
-        let mut AtA: Matrix<f64> = &At * &A;
-
-        AtA.apply(&f);
-        
-        
-        assert!(false);
-    }
-
-
-
-    
-
-
-    #[test] 
-    fn svd_jacobi_test4() {
 
         let size = 5;
         let max = 5.;
-        let A: Matrix<f64> = Matrix::rand(size, size, max);
-        let At: Matrix<f64> = A.transpose();
-        let mut AtA: Matrix<f64> = &At * &A;
+        let eps = 0.0000001;
+        let mut A: Matrix<f64> = Matrix::rand(size, size, max);
 
-        for q in 0..20 {
+        println!("\n A is {} \n", A);
+
+        let (mut U, E, Vt) = A.svd_jac1(eps);
         
-            for i in (1..AtA.columns).rev() {
-                let r = (i + 1) / 2;
-                let k = AtA.columns - i;
-                
-                for j in 0..r {
-                    let a = AtA[[j, j]];
-                    let d = AtA[[i - j, i - j]];
-                    let p = AtA[[j, i - j]];
+        println!("\n U is {} \n", U);
+        let Ut = U.transpose();
+        let mut UtU = &Ut * &U;
+        UtU.round(4.);
+        println!("\n UtU is {} \n", UtU);
+        let V = Vt.transpose();
 
-                    let z = p / (a - d);
-                    let t = ((2. * z).atan()) / 2.;
-                    let c = t.cos();
-                    let s = t.sin();
+        let mut VtV = &Vt * &V;
+        VtV.round(4.);
+        println!("\n VtV is {} \n", VtV);
 
-                    let mut R1: Matrix<f64> = Matrix::id(AtA.columns);
-                    let mut R2: Matrix<f64> = Matrix::id(AtA.columns);
-
-                    R1[[j, j]] = c;
-                    R1[[j, i - j]] = s;
-                    R1[[i - j, j]] = -s;
-                    R1[[i - j, i - j]] = c;
-                    
-                    R2[[j, j]] = c;
-                    R2[[j, i - j]] = -s;
-                    R2[[i - j, j]] = s;
-                    R2[[i - j, i - j]] = c;
-                    
-                    AtA = &(&R1 * &AtA) * &R2;
-                }
-
-                //println!("\n AtA 0 {} \n", AtA);
-
-                if i == (AtA.columns - 1) {
-                    continue; 
-                }
-                
-                for j in 0..r {
-                    let y = (AtA.rows) - i + j;
-                    let x = (AtA.columns - 1) - j;
-
-                    println!("\n {} {} \n", y , x);
-
-                    let p = AtA[[y, x]];
-                    let a = AtA[[y, y]];
-                    let d = AtA[[x, x]];
-                    
-                    let z = p / (a - d);
-                    let t = ((2. * z).atan()) / 2.;
-                    let c = t.cos();
-                    let s = t.sin();
-
-                    let mut R1: Matrix<f64> = Matrix::id(AtA.columns);
-                    let mut R2: Matrix<f64> = Matrix::id(AtA.columns);
-
-                    R1[[y, y]] = c;
-                    R1[[y, x]] = s;
-                    R1[[x, y]] = -s;
-                    R1[[x, x]] = c;
-                    
-                    R2[[y, y]] = c;
-                    R2[[y, x]] = -s;
-                    R2[[x, y]] = s;
-                    R2[[x, x]] = c;
-
-                    //println!("\n R1 {} \n", R1);
-                    //println!("\n R2 {} \n", R2);
-                    
-                    AtA = &(&R1 * &AtA) * &R2;
-                }
-
-                //println!("\n AtA 1 {} \n", AtA);
-            }
-            
-        }
-
-        let f = move |x: f64| -> f64 {
-            let c = (2. as f64).powf(12.);
-            (x * c).round() / c
-        };
-
-        AtA.apply(&f);
-        println!("\n AtA 1 {} \n", AtA);
-        //assert!(false);
-    }
-
-
-
-
-
-
-    #[test] 
-    fn svd_jacobi_test3() {
-
-        let size = 4;
-        let max = 5.;
-        let A: Matrix<f64> = Matrix::rand(size, size, max);
-        let At: Matrix<f64> = A.transpose();
-        let AtA1: Matrix<f64> = &At * &A;
-
-        let mut AtA: Matrix<f64> = &At * &A;
-        let rows = AtA.rows - 1;
-        let columns = AtA.columns - 1;
+        println!("\n E is {} \n", E);
+        println!("\n Vt is {} \n", Vt);
         
-        let steps = AtA.rows / 2;
+        let P = &(&U * &E) * &Vt;
+
+        println!("\n P is {} \n", P);
         
-        for i in 0..steps {
-            let a = AtA[[i, i]];
-            let k = AtA[[rows - i, columns - i]];
-            let p = AtA[[i, columns - i]];
-            
-            let z = p / (a - k);
-            let t = ((2. * z).atan()) / 2.;
-            let c = t.cos();
-            let s = t.sin();
-            /*
-            println!("\n step {} \n", i);
-            println!("\n AtA {} \n", AtA);
-            println!("\n a,k,p {} {} {} \n", a, k, p);
-            */
-            let mut R1: Matrix<f64> = Matrix::id(rows + 1);
-            let mut R2: Matrix<f64> = Matrix::id(rows + 1);
+        let mut diff = &A - &P;
+        diff.round(4.);
 
-            R1[[i, i]] =  c;
-            R1[[i, columns - i]] =  s;
-            R1[[rows - i, i]] =  -s;
-            R1[[rows - i, columns - i]] =  c;
-            
-            R2[[i, i]] =  c;
-            R2[[i, columns - i]] =  -s;
-            R2[[rows - i, i]] =  s;
-            R2[[rows - i, columns - i]] =  c;
-            /*
-            println!("\n c s is {} {} \n", c, s);
-            println!("\n R1 is {} \n", R1);
-            println!("\n R2 is {} \n", R2);
-            */
-            AtA = &(&R1 * &AtA) * &R2;
-
-            println!("\n AtA is {} \n", AtA);
-        }
-
-
+        println!("\n A - P is {} \n", diff);
         
-        /*let steps = (AtA.rows - 1) / 2;
-    
-        for i in 0..steps {
-            let a = AtA[[i, i]];
-            let k = AtA[[rows - i, columns - i]];
-            let p = AtA[[i, columns - i]];
-            
-            let z = p / (a - k);
-            let t = ((2. * z).atan()) / 2.;
-            let c = t.cos();
-            let s = t.sin();
-            
-            let mut R1: Matrix<f64> = Matrix::id(rows + 1);
-            let mut R2: Matrix<f64> = Matrix::id(rows + 1);
-
-            R1[[i, i]] =  c;
-            R1[[i, columns - i]] =  s;
-            R1[[rows - i, i]] =  -s;
-            R1[[rows - i, columns - i]] =  c;
-            
-            R2[[i, i]] =  c;
-            R2[[i, columns - i]] =  -s;
-            R2[[rows - i, i]] =  s;
-            R2[[rows - i, columns - i]] =  c;
-            
-            AtA = &(&R1 * &AtA) * &R2;
-
-            println!("\n AtA is {} \n", AtA);
-        } */
-            
-        
-        
-            
-        
-        //assert!(false);
+        assert!(false);
     }
 
 
@@ -3318,6 +3038,23 @@ mod tests {
     
 
 
+    /*
+    n = 3
+    matrix![f64,
+        3.989662529213885, 1.3111352510863685, 0.6327979653493032, 1.2585828396533043, 0.792539040178466;
+        4.805035302184294, 3.7402061208531254, 2.9985124817163875, 3.381193980206488, 2.184574576145316;
+        0.10371257771584097, 3.9133316980925663, 4.030820968277014, 3.3811419789265256, 2.2285952196261243;
+        1.2053697910852812, 3.882821367703303, 3.7993293346176085, 3.389835902404731, 2.2240047433478924;
+        0.18136419580157326, 1.6480633417317732, 1.6725567663731522, 1.4283145902435774, 0.9401488909222216;
+    ];
+    n = 2
+    matrix![f64,
+        1.3924180940913122, 1.4694711581302726, 4.789884030718086, 2.2415031107785697;
+        2.3957069426959077, 1.6044759254014513, 4.92106057298537, 2.638089492954054;
+        3.8708880722626837, 0.7095293413582591, 1.184120216529141, 1.7789444693510312;
+        3.4807248422705097, 1.410004021172048, 3.8392722080247497, 2.6178956559366244;
+    ];
+    */
     fn qr_test_givens(i:usize, case:u32) {
         let mut rng = rand::thread_rng();
         
@@ -3402,16 +3139,6 @@ mod tests {
             let offset = rng.gen_range(1, size);
             A = Matrix::rand(size, size + offset, max);
         }
-        /*
-        TODO
-        A = matrix![f64,
-            3.989662529213885, 1.3111352510863685, 0.6327979653493032, 1.2585828396533043, 0.792539040178466;
-            4.805035302184294, 3.7402061208531254, 2.9985124817163875, 3.381193980206488, 2.184574576145316;
-            0.10371257771584097, 3.9133316980925663, 4.030820968277014, 3.3811419789265256, 2.2285952196261243;
-            1.2053697910852812, 3.882821367703303, 3.7993293346176085, 3.389835902404731, 2.2240047433478924;
-            0.18136419580157326, 1.6480633417317732, 1.6725567663731522, 1.4283145902435774, 0.9401488909222216;
-        ];
-        */
 
         println!("qr_test({}): case {} -> A({},{}), A rank {}, n {}, size {} \n", i, case, A.rows, A.columns, A.rank(), n, size);
 

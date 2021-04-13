@@ -406,7 +406,11 @@ pub fn givens_qr<T: Number>(A:&Matrix<T>) -> qr<T> {
         for j in i..A.rows {
 
             let theta = A.givens_theta(j, j - i);
-            
+
+            if theta == 0. {
+                continue;
+            }
+
             let t = ((j, j - i), theta);
 
             list.push(t);
