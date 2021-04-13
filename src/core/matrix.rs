@@ -1859,10 +1859,139 @@ impl <T: Number> Matrix<T> {
         Some(K)
     }
 
+    //TODO matrix norms
+
+    pub fn svd_jac_sym(&self) {
+        
+        let size = 4;
+        let max = 5.;
+        let A: Matrix<f64> = Matrix::rand(size, size, max);
+        let At: Matrix<f64> = A.transpose();
+        let AtA1: Matrix<f64> = &At * &A;
+
+        let mut AtA: Matrix<f64> = &At * &A;
+
+        //TODO off diag sum
+        
+        for q in 0..3 {
+            for i in 0..AtA.rows {
+                for j in 1..AtA.columns {
+                    let a = AtA[[i, i]];
+                    let b = AtA[[i, j]];
+                    let d = AtA[[j, j]];
+                    let z = b / (a - d);
+                    let t = ((2. * z).atan()) / 2.;
+                    let c = t.cos();
+                    let s = t.sin();
+    
+                    let mut R1: Matrix<f64> = Matrix::id(AtA.rows);
+                    let mut R2: Matrix<f64> = Matrix::id(AtA.rows);
+    
+                    R1[[i, i]] =  c;
+                    R1[[i, j]] =  s;
+                    R1[[j, i]] =  -s;
+                    R1[[j, j]] =  c;
+                    
+                    R2[[i, i]] =  c;
+                    R2[[i, j]] =  -s;
+                    R2[[j, i]] =  s;
+                    R2[[j, j]] =  c;
+    
+                    println!("\n AtA before is {} \n", AtA);
+                    
+                    AtA = &(&R1 * &AtA) * &R2;
+    
+                    println!("\n a b d {} {} {} \n", a, b, d);
+    
+                    println!("\n AtA is {} \n", AtA);
+                }
+            }
+        }
+        
+    }
     
 
-    pub fn jacobi() {
+    
+    pub fn svd_jac1(&self, eps: f64) -> (Matrix<T>, Matrix<T>, Matrix<T>) {
 
+        //AV = UE
+        //A = UEVt
+        //AtA = VE^2Vt
+        //VtV = UtU = I
+        
+        //TODO svd dimensions rectangular cases
+        let iterations = 10; //TODO until convergence
+        let mut A = self.clone(); 
+        let mut V: Matrix<T> = Matrix::id(A.columns);
+        
+        for q in 0..iterations {
+
+            for i in 0..A.columns {
+
+                let c = A.extract_column(i);
+
+                for j in 0..A.columns {
+                    //TODO ?
+                    if i == j {
+                        continue;
+                    }
+
+                    let x = A.extract_column(j);
+
+                    let ai_aj: f64 = &c * &x;
+                    let aj_aj: f64 = &c * &c;
+                    let ai_ai: f64 = &x * &x;
+                    
+                    if ai_aj.abs() <= eps {
+                       continue;
+                    }
+                    
+                    let z: f64 = ai_aj / (aj_aj - ai_ai);
+                    let t = ((2. * z).atan()) / 2.;
+                    let c = t.cos();
+                    let s = t.sin();
+                    
+                    /*
+                    let w = (aj_aj - ai_ai) / (2. * ai_aj);
+                    let t = w.signum() / (w.abs() + (1. + w.powf(2.)).sqrt()); 
+                    let c = 1. / (1. + t.powf(2.)).sqrt();
+                    let s = c * t;
+                    */
+
+                    let mut R: Matrix<T> = Matrix::id(A.columns);
+
+                    R[[i, i]] = T::from_f64(c).unwrap();
+                    R[[j, j]] = T::from_f64(c).unwrap();
+
+                    R[[j, i]] = T::from_f64(s).unwrap();
+                    R[[i, j]] = T::from_f64(-s).unwrap();
+
+                    V = &V * &R;
+                    A = &A * &R;
+                }
+            }
+        }
+        
+        let mut b = A.into_basis();
+        let mut l: Vec<T> = Vec::new();
+        
+        for p in 0..b.len() {
+            let mut next = &mut b[p];
+            l.push(
+                T::from_f64(next.length()).unwrap()
+            );
+            next.normalize();
+        }
+
+        let U = Matrix::from_basis(b);
+        
+        let v = Vector::new(l);
+        let mut E: Matrix<T> = Matrix::new(A.rows, A.columns); 
+        E.set_diag(v);
+        
+        let Vt = V.transpose();
+        
+        (U, E, Vt)
     }
 
 
@@ -2480,6 +2609,12 @@ mod tests {
 
 
 
+
+
+    
+    //power method, inverse iteration
+    //iterative refinement
+
     //TODO
     #[test]
     fn qr_test_solve() {
@@ -2500,59 +2635,141 @@ mod tests {
     
 
 
-    //jacobi rotations
-    //svd (singular values, singular vectors)
-    //power method, inverse iteration
-    //pseudo inverse
-    //iterative refinement
-
-
-
     #[test] 
-    fn svd_jacobi_test5() {
-        let size = 5;
+    fn svd_jac1() {
+
+        //AV = UE
+        //A = UEVt
+
+        let f = move |x: f64| -> f64 {
+            let c = (2. as f64).powf(12.);
+            (x * c).round() / c
+        };
+
+        let size = 10;
         let max = 5.;
+        let eps = 0.0000001;
         let mut A: Matrix<f64> = Matrix::rand(size, size, max);
-        let At: Matrix<f64> = A.transpose();
-        let mut AtA: Matrix<f64> = &At * &A;
-        
-        for q in 0..100 {
+        let mut V: Matrix<f64> = Matrix::id(A.rows);
+        let iterations = 10;
+
+        let A_start = A.clone();
+
+        for q in 0..iterations {
+
             for i in 0..A.columns {
+
                 let c = A.extract_column(i);
 
-                for j in (i + 1)..A.columns {
+                for j in 0..A.columns {
+                    //?
+                    if i == j {
+                        continue;
+                    }
+
                     let x = A.extract_column(j);
-                    let ata: f64 = &c * &x;
-                    let aa: f64 = &c * &c;
-                    let atat: f64 = &x * &x;
-                    let z: f64 = ata / (aa * atat);
+
+                    let ai_aj: f64 = &c * &x;
+                    let aj_aj: f64 = &c * &c;
+                    let ai_ai: f64 = &x * &x;
+                    
+                    if ai_aj.abs() < eps {
+                       continue;
+                    }
+                    
+                    let z: f64 = ai_aj / (aj_aj - ai_ai);
                     let t = ((2. * z).atan()) / 2.;
                     let c = t.cos();
                     let s = t.sin();
-
-                    let mut R1: Matrix<f64> = Matrix::id(AtA.columns);
-
-                    R1[[i, i]] = c;
-                    R1[[j, j]] = c;
-
-                    R1[[j, i]] = s;
-                    R1[[i, j]] = -s;
-
-                    //println!("\n R1 is {} \n", R1);
                     
-                    A = &A * &R1;
-                }
+                    /*
+                    let w = (aj_aj - ai_ai) / (2. * ai_aj);
+                    let t = w.signum() / (w.abs() + (1. + w.powf(2.)).sqrt()); 
+                    let c = 1. / (1. + t.powf(2.)).sqrt();
+                    let s = c * t;
+                    */
 
-                
-                
+                    let mut R: Matrix<f64> = Matrix::id(A.columns);
+
+                    R[[i, i]] = c;
+                    R[[j, j]] = c;
+
+                    R[[j, i]] = s;
+                    R[[i, j]] = -s;
+
+                    V = &V * &R;
+                    A = &A * &R;
+                }
             }
         }
 
-        println!("\n A is {} \n", A);
+        //svd dimensions rectangular cases
+        //AV = UE
+        //A = UEVt
+        //Ac -> UE
+        
+        println!("\n U 1 {} \n", A);
+        
+        let mut b = A.into_basis();
+        let mut l: Vec<f64> = Vec::new();
+        
+        for p in 0..b.len() {
+            let mut next = &mut b[p];
+            l.push(next.length());
+            next.normalize();
+        }
 
+        let U = Matrix::from_basis(b);
+
+        println!("\n U 2 {} \n", U);
+
+        let v = Vector::new(l);
+        let mut E: Matrix<f64> = Matrix::new(A.rows, A.columns); 
+        E.set_diag(v);
+        
+        let U3 = &U * &E;
+
+        println!("\n U 3 {} \n", U3);
+
+
+
+
+        
+        let Vt = V.transpose();
+
+        let AVt = &A * &Vt;
+
+        let K = &U3 * &Vt;
+
+        println!("\n A start {} \n", A_start);
+        println!("\n A back {} \n", K);
+        println!("\n diff {} \n", &A_start - &K);
+
+        //println!("\n U 3 {} \n", U);
+
+        /*
+        println!("\n A start {} \n", A_start);
+        println!("\n AVt {} \n", AVt);
+        println!("\n diff {} \n", &A_start - &AVt);
+        */
+
+        let Ut = U.transpose();
+        let UtU = &U * &Ut;
+        println!("\n UtU {} \n", UtU);
+
+
+        let At: Matrix<f64> = A.transpose();
+        let mut AtA: Matrix<f64> = &At * &A;
+
+        AtA.apply(&f);
+        
+        
         assert!(false);
     }
 
+
+
+    
 
 
     #[test] 
@@ -2668,7 +2885,6 @@ mod tests {
         let mut AtA: Matrix<f64> = &At * &A;
         let rows = AtA.rows - 1;
         let columns = AtA.columns - 1;
-
         
         let steps = AtA.rows / 2;
         
@@ -2744,121 +2960,6 @@ mod tests {
         
             
         
-        //assert!(false);
-    }
-
-
-
-    #[test] 
-    fn svd_jacobi_test2() {
-
-        let size = 4;
-        let max = 5.;
-        let A: Matrix<f64> = Matrix::rand(size, size, max);
-        let At: Matrix<f64> = A.transpose();
-        let AtA1: Matrix<f64> = &At * &A;
-
-        let mut AtA: Matrix<f64> = &At * &A;
-
-        //TODO off
-        
-        for q in 0..3 {
-            for i in 0..AtA.rows {
-                for j in 1..AtA.columns {
-                    let a = AtA[[i, i]];
-                    let b = AtA[[i, j]];
-                    let d = AtA[[j, j]];
-                    let z = b / (a - d);
-                    let t = ((2. * z).atan()) / 2.;
-                    let c = t.cos();
-                    let s = t.sin();
-    
-                    let mut R1: Matrix<f64> = Matrix::id(AtA.rows);
-                    let mut R2: Matrix<f64> = Matrix::id(AtA.rows);
-    
-                    R1[[i, i]] =  c;
-                    R1[[i, j]] =  s;
-                    R1[[j, i]] =  -s;
-                    R1[[j, j]] =  c;
-                    
-                    R2[[i, i]] =  c;
-                    R2[[i, j]] =  -s;
-                    R2[[j, i]] =  s;
-                    R2[[j, j]] =  c;
-    
-                    println!("\n AtA before is {} \n", AtA);
-                    
-                    AtA = &(&R1 * &AtA) * &R2;
-    
-                    println!("\n a b d {} {} {} \n", a, b, d);
-    
-                    println!("\n AtA is {} \n", AtA);
-                }
-            }
-        }
-        
-        //assert!(false);
-    }
-
-
-
-    #[test] 
-    fn svd_jacobi_test() {
-
-        //1jac
-        //sort columns by norm
-        //two parallel jacobi orderings
-        //AV = H
-        //H columns are orthogonal
-        //non zero columns of H -> H = UE
-        //UtU = I
-        //E = diag(s1, ... sn)
-        //V - product of plane rotations
-        //one set of rotations sweep ( n(n - 1) / 2  rotations )
-        //all columns are orthogonal to each other after sweep N
-        //avoid exceptional cases with cycling - threshold strategy
-
-        //A = UEVt
-        //AtA = VE^2Vt
-        //
-
-        let m = matrix![f64,
-            2.33, 4.52, 1.21;
-            4.52, 6.1,  8.95;
-            1.21,  8.95, 4.12;
-        ];
-
-        let p = m[[0, 2]]; 
-        let k = m[[2, 2]]; 
-        let a = m[[0, 0]];
-        let z = p / (a - k);
-
-        let t = ((2. * z).atan()) / 2.;
-        let c = t.cos();
-        let s = t.sin();
-
-        let R1 = matrix![f64,
-            c,  0., s;
-            0., 1., 0.;
-           -s,  0., c;
-        ];
-
-        let R2 = matrix![f64,
-            c,  0., -s;
-            0., 1., 0.;
-            s,  0., c;
-        ];
-
-        let R = &(&R1 * &m) * &R2;
-
-        println!("\n m is {} \n", m);
-        
-        println!("\n R1 is {} \n", R1);
-
-        println!("\n R2 is {} \n", R2);
-
-        println!("\n R is {} \n", R);
-
         //assert!(false);
     }
 
