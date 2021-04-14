@@ -4,8 +4,6 @@ use crate::Number;
 use super::{matrix::Matrix, vector::Vector};
 use js_sys::{Float32Array, Float64Array, SharedArrayBuffer, Uint8Array};
 use num_traits::identities;
-//use rand::prelude::*;
-//use rand::Rng;
 use wasm_bindgen::{JsCast, prelude::*};
 
 

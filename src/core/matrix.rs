@@ -46,7 +46,10 @@ workers bounded by hardware concurrency
 reuse workers
 spread available work through workers, establish queue
 */
-//complex numbers!
+//foreign function interface call C routines
+//projection - properties and geometry of higher dimensional spaces (Cauchy–Schwarz inequality in n-dim)
+//sparse
+//complex numbers
 //monte carlo
 //kalman filter
 //spectral decomposition
@@ -61,6 +64,7 @@ spread available work through workers, establish queue
 //cholesky
 //svd
 /*
+//iterative refinement LU
 use Newton method
 b known
 compute Ax - using obtained x
@@ -1087,7 +1091,7 @@ impl <T: Number> Matrix<T> {
         }
 
         let x: f64 = T::to_f64(&(m / d)).unwrap();
-        
+        //TODO atan domain ??? verify threshold pi / 2 
         let theta = x.atan();
 
         theta
@@ -1919,53 +1923,96 @@ impl <T: Number> Matrix<T> {
     }
     
 
-    
-    pub fn svd_jac1(&self, eps: f64) -> (Matrix<T>, Matrix<T>, Matrix<T>) {
 
-        //AV = UE
-        //A = UEVt
-        //AtA = VE^2Vt
-        //VtV = UtU = I
+    pub fn svd_jac1_form_UE(self) -> (Matrix<T>, Matrix<T>) {
+
+        let A = self;
+
+        let zero = T::from_f64(0.).unwrap();
+
+        let mut cols = A.into_basis();
+
+        let mut e: Vec<T> = Vec::new();
         
-        //TODO svd dimensions rectangular cases
-        let iterations = 10; //TODO until convergence
-        let mut A = self.clone(); 
+        for p in 0..cols.len() {
+            let next = &cols[p];
+            
+            let len = T::from_f64( next.length() ).unwrap();
+            
+            if len == zero {
+               continue;
+            }
+            
+            e.push(len);
+            
+            cols[p] = next / len;
+        }
+
+        let U = Matrix::from_basis(cols);
+
+        let d = e.len();
+
+        let mut E: Matrix<T> = Matrix::new(d, d); 
+
+        let diag = Vector::new(e);
+        
+        E.set_diag(diag);
+
+        (U, E)
+    }
+
+
+
+    /*
+    let d = aj_aj - ai_ai;
+
+    if d == 0. {
+       continue;
+    }
+
+    let z: f64 = ai_aj / d;
+    let t = ((2. * z).atan()) / 2.;
+    let c = t.cos();
+    let s = t.sin();
+    */
+
+    //AV = UE
+    //A = UEVt
+    //AtA = VE^2Vt
+    //VtV = UtU = I
+    
+    pub fn svd_jac1(mut self, eps: f64) -> (Matrix<T>, Matrix<T>, Matrix<T>) {
+        
+        let mut A = self;
+
         let mut V: Matrix<T> = Matrix::id(A.columns);
         
-        for q in 0..iterations {
+        loop {
+
+            let mut ctr = 0;
 
             for i in 0..A.columns {
 
                 let c = A.extract_column(i);
 
-                for j in 0..A.columns {
-                    //TODO ?
-                    if i == j {
-                        continue;
-                    }
-
+                for j in (i + 1)..A.columns {
+                    
                     let x = A.extract_column(j);
 
                     let ai_aj: f64 = &c * &x;
                     let aj_aj: f64 = &c * &c;
                     let ai_ai: f64 = &x * &x;
                     
-                    if ai_aj.abs() <= eps {
+                    if ai_aj.abs() < eps {
                        continue;
                     }
-                    
-                    let z: f64 = ai_aj / (aj_aj - ai_ai);
-                    let t = ((2. * z).atan()) / 2.;
-                    let c = t.cos();
-                    let s = t.sin();
-                    
-                    /*
+
                     let w = (aj_aj - ai_ai) / (2. * ai_aj);
                     let t = w.signum() / (w.abs() + (1. + w.powf(2.)).sqrt()); 
                     let c = 1. / (1. + t.powf(2.)).sqrt();
                     let s = c * t;
-                    */
-
+                    
+                    //TODO replace with columns composition
                     let mut R: Matrix<T> = Matrix::id(A.columns);
 
                     R[[i, i]] = T::from_f64(c).unwrap();
@@ -1976,26 +2023,17 @@ impl <T: Number> Matrix<T> {
 
                     V = &V * &R;
                     A = &A * &R;
+
+                    ctr += 1;
                 }
+            }
+
+            if ctr == 0 {
+               break;
             }
         }
         
-        let mut b = A.into_basis();
-        let mut l: Vec<T> = Vec::new();
-        
-        for p in 0..b.len() {
-            let mut next = &mut b[p];
-            l.push(
-                T::from_f64(next.length()).unwrap()
-            );
-            next.normalize();
-        }
-
-        let U = Matrix::from_basis(b);
-        
-        let v = Vector::new(l);
-        let mut E: Matrix<T> = Matrix::new(A.rows, A.columns); 
-        E.set_diag(v);
+        let (U, E) = A.svd_jac1_form_UE();
         
         let Vt = V.transpose();
         
@@ -2617,70 +2655,134 @@ mod tests {
 
 
     
-    //power method, inverse iteration
-    //iterative refinement
+    //edge cases (zeros, diagonal, n x 1, 1 x n)
 
-    //TODO
+
+
     #[test]
-    fn qr_test_solve() {
+    fn svd_jac1_test1() {
 
-        //solve (verify with lu)
+        let test = 20;
         
+        //square
+        for i in 2..test {
+            let size = i;
+            let max = 5.;
+            let mut A: Matrix<f64> = Matrix::rand(size, size, max);
+            svd_jac1_test0(&A);
+        }
+        
+        //singular
+        for i in 2..test {
+            let mut rng = rand::thread_rng();
+            let size = i;
+            let max = 5.;
+            let n = rng.gen_range(0, size - 1);
+            let A = Matrix::rand_sing2(size, n, max);
+            svd_jac1_test0(&A);
+        }
+        
+        //rows > columns
+        for i in 2..test {
+            let mut rng = rand::thread_rng();
+            let size = i;
+            let max = 5.;
+            let n = rng.gen_range(0, size - 1);
+            let mut A: Matrix<f64> = Matrix::rand(size + n, size, max);
+            svd_jac1_test0(&A);
+        }
+
+        //columns > rows
+        for i in 2..test {
+            let mut rng = rand::thread_rng();
+            let size = i;
+            let max = 5.;
+            let n = rng.gen_range(0, size - 1);
+            let mut A: Matrix<f64> = Matrix::rand(size + n, size, max);
+            svd_jac1_test0(&A);
+        }
     }
 
-
-
-    //TODO
-    #[test] 
-    fn schwarz_inequality() {
-
-
-
-    }
     
 
+    //TODO concrete bounds
+    fn svd_jac1_test0(A: &Matrix<f64>) {
 
-    #[test] 
-    fn svd_jac1() {
+        let eps = (f32::EPSILON) as f64;
+        let r = A.rank() as usize;
+        let At: Matrix<f64> = A.transpose();
+        let AtA: Matrix<f64> = &At * A;
+        let (mut U, E, Vt) = A.clone().svd_jac1(eps);
         
-        let f = move |x: f64| -> f64 {
-            let c = (2. as f64).powf(12.);
-            (x * c).round() / c
-        };
-
-        let size = 5;
-        let max = 5.;
-        let eps = 0.0000001;
-        let mut A: Matrix<f64> = Matrix::rand(size, size, max);
-
-        println!("\n A is {} \n", A);
-
-        let (mut U, E, Vt) = A.svd_jac1(eps);
-        
-        println!("\n U is {} \n", U);
-        let Ut = U.transpose();
-        let mut UtU = &Ut * &U;
-        UtU.round(4.);
-        println!("\n UtU is {} \n", UtU);
-        let V = Vt.transpose();
-
-        let mut VtV = &Vt * &V;
-        VtV.round(4.);
-        println!("\n VtV is {} \n", VtV);
+        assert_eq!(U.rows, A.rows, "U rows == A rows");
+        assert_eq!(U.columns, A.columns, "U columns == A columns");
+        assert_eq!(Vt.rows, A.columns, "Vt rows == A columns");
+        assert_eq!(Vt.columns, A.columns, "Vt columns == A columns");
+        assert_eq!(E.rows, A.columns, "E rows == A columns");
+        assert_eq!(E.columns, A.columns, "E columns == A columns");
+        assert!(E.is_square(), "E is square");
+        assert!(Vt.is_square(), "Vt is square");
 
         println!("\n E is {} \n", E);
-        println!("\n Vt is {} \n", Vt);
         
-        let P = &(&U * &E) * &Vt;
+        //VtV = UtU = I
+        println!("\n U is {} \n", U);
+        let Ut = U.transpose();
+        let mut UtU: Matrix<f64> = &Ut * &U;
+        //UtU.round(4.);
+        println!("\n UtU is {} \n", UtU);
+        let V = Vt.transpose();
+        println!("\n V is {} \n", V);
+        let mut VtV: Matrix<f64> = &Vt * &V;
+        //VtV.round(4.);
+        println!("\n VtV is {} \n", VtV);
+
+        let mut UtUr = UtU.clone();
+        UtUr.round(3.);
+        let mut VtVr = VtV.clone();
+        VtVr.round(3.);
+
+        println!("\n UtUr is {} \n", UtUr);
+        println!("\n VtVr is {} \n", VtVr);
+
+        if !(A.is_square() && r < A.rows) {
+           assert!(eq_bound_eps(&UtU, &Matrix::id(UtU.rows)), "UtU == I");
+        }
+        
+        assert!(eq_bound_eps(&VtV, &Matrix::id(VtV.rows)), "VtV == I");
+
+        let AV: Matrix<f64> = A * &V;
+        let UE: Matrix<f64> = &U * &E;
+        assert!(eq_bound_eps(&AV, &UE), "AV == UE");
+
+        let E2: Matrix<f64> = &E * &E;
+        let VE2Vt: Matrix<f64> = &V * &(&E2 * &Vt);
+        assert!(eq_bound_eps(&AtA, &VE2Vt), "AtA == VE^2Vt");
+        
+        let EVt: Matrix<f64> = &E * &Vt;
+        let P: Matrix<f64> = &U * &EVt;
 
         println!("\n P is {} \n", P);
+        assert!(eq_bound_eps(&A, &P), "A == P");
         
-        let mut diff = &A - &P;
-        diff.round(4.);
+        
+        let mut e_diag = E.extract_diag();
 
-        println!("\n A - P is {} \n", diff);
+        e_diag.data.sort_by(|a, b| a.partial_cmp(b).unwrap());
+
+        let mut eig = AtA.eig(eps, 200);
+
+        eig = eig.iter_mut().map(|x| { if *x <= (f32::EPSILON as f64) { 0. } else { x.sqrt() } }).collect();
         
-        assert!(false);
+        eig.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        
+        let ata_eig = Vector::new(eig.clone());
+
+        println!("\n e_diag is {} \n", e_diag);
+
+        println!("\n AtA eig sqrt is {:?} \n", eig);
+
+        assert!(eq_bound_eps_v(&e_diag, &ata_eig), "e_diag == ata_eig");
     }
 
 
@@ -3031,8 +3133,9 @@ mod tests {
         }
         
         for i in 2..test {
-            qr_test_givens(i, 0);
-            qr_test_givens(i, 1);
+            //TODO
+            //qr_test_givens(i, 0);
+            //qr_test_givens(i, 1);
         }
     }
     
@@ -3066,7 +3169,18 @@ mod tests {
         let size = i;
         let max = 5.;
         let mut n = 0;
-        let mut A: Matrix<f64> = Matrix::rand(size, size, max);
+        let mut A: Matrix<f64> = matrix![f64,
+            0., -2.9, -4.5, -0.03, 1.22, -3.6, 1.67, 2.79, -4.23;
+            3.65, 0.72, 1.97, -4.76, 2.45, -2.89, -1.08, 4.77, 0.4;
+            0.74, 0.05, -2.37, -2.46, -3.43, 3.41, -1.6, -4.53, -3.6;
+            4.09, 2.62, -0.29, 1.14, -1.44, -2.16, -1.81, 4.43, -0.02;
+            -4.21, 1.75, 1.72, -3.88, -1.68, -3.06, 2.12, 3.03, 4.28;
+            -0.27, 4.4, -3.53, -0.7, 2.4, -4.91, 3.67, -1.61, 0.65;
+            2.43, 0.91, -4.45, -1.67, 0.8, 1.24, -1.48, -4.82, 3.64;
+            -4.93, -3.96, 2.48, 3.01, -2.91, 1.34, -3.18, -1.41, -2.96;
+            -4.51, 4.93, 0.31, -3.97, 0.55, 4.92, 3.65, 4.84, 0.37;
+        ];
+        //Matrix::rand(size, size, max);
         
         if case == 1 {
             //arbitrary singular
@@ -3761,15 +3875,6 @@ mod tests {
        solve1();
     }
 
-
-
-    //TODO
-    //TODO properties and geometry of higher dimensional spaces
-    #[test]
-    fn projection() {
-
-    }
-    
 
 
     fn lu_test10() {

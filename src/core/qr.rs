@@ -351,6 +351,28 @@ pub fn givens_qr_upper_hessenberg<T: Number>(A:Matrix<T>) -> ( Matrix<T>, Vec<(u
 
 
 
+pub fn apply_jac<T: Number>(m: &mut Matrix<T>, j: usize, theta: f64) {
+
+    let zero = T::from_f64(0.).unwrap();
+    let sin: T = T::from_f64( theta.sin() ).unwrap();
+    let cos: T = T::from_f64( theta.cos() ).unwrap();
+    
+    let mut y: Vector<T> = Vector::new(vec![zero; m.columns]);
+    let mut z: Vector<T> = Vector::new(vec![zero; m.columns]);
+    
+    for k in 0..m.columns {
+        y[k] = m[[j, k]];
+        z[k] = m[[j - 1, k]];
+    }
+    
+    for k in 0..m.columns {
+        m[[j - 1, k]] = (cos * z[k]) + (sin * y[k]);
+        m[[j, k]] = (-sin * z[k]) + (cos * y[k]);
+    }
+}
+
+
+
 pub fn apply_q_givens<T: Number>(m: &mut Matrix<T>, j: usize, theta: f64) {
 
     let zero = T::from_f64(0.).unwrap();

@@ -123,11 +123,13 @@ impl <T:Number> Vector <T> {
 
 
 
-    //TODO
-    pub fn wedge() {
-
+    pub fn ones(l:usize) -> Vector<T> {
+        let one = T::from_f64(1.).unwrap();
+        let v = vec![one;l];
+        Vector::new(v)
     }
 
+    
 
     pub fn is_zero(&self) -> bool {
         
