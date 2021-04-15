@@ -37,9 +37,37 @@ pub fn measure_time(f: fn()) -> u128 {
 
 
 
-pub fn round(n:f64) -> f64 {
-    let c = (2. as f64).powf(32.);
+pub fn round(n:f64, eps:f64) -> f64 {
+    let c = (2. as f64).powf(eps);
     (n * c).round() / c
+}
+
+
+
+pub fn eq_bound<T: Number>(a: &Matrix<T>, b: &Matrix<T>, bound: f64) -> bool {
+    
+    if a.rows != b.rows || a.columns != b.columns {
+       return false;
+    }
+
+    for i in 0..a.rows {
+        for j in 0..a.columns {
+            let d = a[[i,j]] - b[[i,j]];
+            let dd: f64 = T::to_f64(&d).unwrap();
+            if (dd).abs() > bound {
+                return false;
+            }
+        } 
+    }
+    
+    true
+}
+
+
+
+pub fn eq_bound_eps<T: Number>(a: &Matrix<T>, b: &Matrix<T>) -> bool {
+    
+    eq_bound(a, b, EPSILON as f64)
 }
 
 

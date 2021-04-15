@@ -8,4 +8,5 @@ pub mod utils;
 pub mod multiply;
 pub mod lu;
 pub mod qr;
+pub mod svd;
 pub mod solve;

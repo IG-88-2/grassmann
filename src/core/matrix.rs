@@ -32,10 +32,9 @@ use rand::Rng;
 use num_traits::{Float, Num, NumAssignOps, NumOps, PrimInt, Signed, cast, identities};
 use web_sys::Event;
 use crate::{Number, vector, workers::Workers};
-use super::{lu::{block_lu, block_lu_threads_v2, lu, lu_v2}, matrix3::Matrix3, matrix4::Matrix4, multiply::{ multiply_threads, strassen, mul_blocks, get_optimal_depth, decompose_blocks }, 
-qr::{qr, givens_qr, apply_Q_givens_hess, apply_Qt_givens_hess, givens_qr_upper_hessenberg, form_Qt_givens_hess, form_Q_givens_hess, apply_q_R, form_Q, form_P, house_qr, apply_q_b}, solve::{solve_upper_triangular, solve, solve_lower_triangular}, 
-utils::{eq_bound_eps_v, eq_eps_f64}, 
-vector::Vector};
+use super::{ lu::{ block_lu, block_lu_threads_v2, lu, lu_v2 }, matrix3::Matrix3, matrix4::Matrix4, multiply::{ multiply_threads, strassen, mul_blocks, get_optimal_depth, decompose_blocks }, 
+svd::{ svd_jac1 }, qr::{qr, givens_qr, apply_Q_givens_hess, apply_Qt_givens_hess, givens_qr_upper_hessenberg, form_Qt_givens_hess, form_Q_givens_hess, apply_q_R, form_Q, form_P, house_qr, apply_q_b}, 
+solve::{solve_upper_triangular, solve, solve_lower_triangular}, utils::{eq_bound_eps, eq_bound, eq_bound_eps_v, eq_eps_f64}, vector::Vector };
 
 /*
 TODO 
@@ -76,8 +75,8 @@ next x = x - u (shifting x towards better accuracy)
 
 //TODO translation belong to n + 1 class
 
-
-
+//action on a sphere
+//wedge
 //jacobian
 //conv
 //house
@@ -1312,14 +1311,12 @@ impl <T: Number> Matrix<T> {
     };
     */
 
+    
 
-
-    //TODO
-    //for symmetric matrix eigenvectors should be inside Q (verify against LU)
-    //TODO
     //refactor - no lps, send whole matrix and boundaries to subroutines 
-    //exceptional shifts ? 
-    //double shift ?
+    //TODO for symmetric matrix eigenvectors should be inside Q (verify against LU)
+    //TODO exceptional shifts 
+    //TODO double shift
     pub fn eig(&self, precision: f64, steps: i32) -> Vec<f64> {
         
         assert!(self.rows == self.columns, "eig: A should be square");
@@ -1923,126 +1920,10 @@ impl <T: Number> Matrix<T> {
     }
     
 
-
-    pub fn svd_jac1_form_UE(self) -> (Matrix<T>, Matrix<T>) {
-
-        let A = self;
-
-        let zero = T::from_f64(0.).unwrap();
-
-        let mut cols = A.into_basis();
-
-        let mut e: Vec<T> = Vec::new();
-        
-        for p in 0..cols.len() {
-            let next = &cols[p];
-            
-            let len = T::from_f64( next.length() ).unwrap();
-            
-            if len == zero {
-               continue;
-            }
-            
-            e.push(len);
-            
-            cols[p] = next / len;
-        }
-
-        let U = Matrix::from_basis(cols);
-
-        let d = e.len();
-
-        let mut E: Matrix<T> = Matrix::new(d, d); 
-
-        let diag = Vector::new(e);
-        
-        E.set_diag(diag);
-
-        (U, E)
-    }
-
-
-
-    /*
-    let d = aj_aj - ai_ai;
-
-    if d == 0. {
-       continue;
-    }
-
-    let z: f64 = ai_aj / d;
-    let t = ((2. * z).atan()) / 2.;
-    let c = t.cos();
-    let s = t.sin();
-    */
-
-    //AV = UE
-    //A = UEVt
-    //AtA = VE^2Vt
-    //VtV = UtU = I
     
-    pub fn svd_jac1(mut self, eps: f64) -> (Matrix<T>, Matrix<T>, Matrix<T>) {
+    pub fn svd(mut self, eps: f64) -> (Matrix<T>, Matrix<T>, Matrix<T>) {
         
-        let mut A = self;
-
-        let mut V: Matrix<T> = Matrix::id(A.columns);
-        
-        loop {
-
-            let mut ctr = 0;
-
-            for i in 0..A.columns {
-
-                let c = A.extract_column(i);
-
-                for j in (i + 1)..A.columns {
-                    
-                    let x = A.extract_column(j);
-
-                    let ai_aj: f64 = &c * &x;
-                    let aj_aj: f64 = &c * &c;
-                    let ai_ai: f64 = &x * &x;
-                    
-                    if ai_aj.abs() < eps {
-                       continue;
-                    }
-
-                    let w = (aj_aj - ai_ai) / (2. * ai_aj);
-                    let t = w.signum() / (w.abs() + (1. + w.powf(2.)).sqrt()); 
-                    let c = 1. / (1. + t.powf(2.)).sqrt();
-                    let s = c * t;
-                    
-                    //TODO replace with columns composition
-                    let mut R: Matrix<T> = Matrix::id(A.columns);
-
-                    R[[i, i]] = T::from_f64(c).unwrap();
-                    R[[j, j]] = T::from_f64(c).unwrap();
-
-                    R[[j, i]] = T::from_f64(s).unwrap();
-                    R[[i, j]] = T::from_f64(-s).unwrap();
-
-                    V = &V * &R;
-                    A = &A * &R;
-
-                    ctr += 1;
-                }
-            }
-
-            if ctr == 0 {
-               break;
-            }
-        }
-        
-        let (U, E) = A.svd_jac1_form_UE();
-        
-        let Vt = V.transpose();
-        
-        (U, E, Vt)
-    }
-
-
-
-    pub fn wedge() {
+        svd_jac1(self, eps)
 
     }
 }
@@ -2103,34 +1984,6 @@ fn scale <T:Number>(m: &mut Matrix<T>, n: T) -> &mut Matrix<T> {
     m.data = m.data.iter().map(|x:&T| *x*n).collect();
 
     m
-}
-
-
-
-fn eq_bound<T: Number>(a: &Matrix<T>, b: &Matrix<T>, bound: f64) -> bool {
-    
-    if a.rows != b.rows || a.columns != b.columns {
-       return false;
-    }
-
-    for i in 0..a.rows {
-        for j in 0..a.columns {
-            let d = a[[i,j]] - b[[i,j]];
-            let dd: f64 = T::to_f64(&d).unwrap();
-            if (dd).abs() > bound {
-                return false;
-            }
-        } 
-    }
-    
-    true
-}
-
-
-
-fn eq_bound_eps<T: Number>(a: &Matrix<T>, b: &Matrix<T>) -> bool {
-    
-    eq_bound(a, b, EPSILON as f64)
 }
 
 
@@ -2654,138 +2507,6 @@ mod tests {
     };
 
 
-    
-    //edge cases (zeros, diagonal, n x 1, 1 x n)
-
-
-
-    #[test]
-    fn svd_jac1_test1() {
-
-        let test = 20;
-        
-        //square
-        for i in 2..test {
-            let size = i;
-            let max = 5.;
-            let mut A: Matrix<f64> = Matrix::rand(size, size, max);
-            svd_jac1_test0(&A);
-        }
-        
-        //singular
-        for i in 2..test {
-            let mut rng = rand::thread_rng();
-            let size = i;
-            let max = 5.;
-            let n = rng.gen_range(0, size - 1);
-            let A = Matrix::rand_sing2(size, n, max);
-            svd_jac1_test0(&A);
-        }
-        
-        //rows > columns
-        for i in 2..test {
-            let mut rng = rand::thread_rng();
-            let size = i;
-            let max = 5.;
-            let n = rng.gen_range(0, size - 1);
-            let mut A: Matrix<f64> = Matrix::rand(size + n, size, max);
-            svd_jac1_test0(&A);
-        }
-
-        //columns > rows
-        for i in 2..test {
-            let mut rng = rand::thread_rng();
-            let size = i;
-            let max = 5.;
-            let n = rng.gen_range(0, size - 1);
-            let mut A: Matrix<f64> = Matrix::rand(size + n, size, max);
-            svd_jac1_test0(&A);
-        }
-    }
-
-    
-
-    //TODO concrete bounds
-    fn svd_jac1_test0(A: &Matrix<f64>) {
-
-        let eps = (f32::EPSILON) as f64;
-        let r = A.rank() as usize;
-        let At: Matrix<f64> = A.transpose();
-        let AtA: Matrix<f64> = &At * A;
-        let (mut U, E, Vt) = A.clone().svd_jac1(eps);
-        
-        assert_eq!(U.rows, A.rows, "U rows == A rows");
-        assert_eq!(U.columns, A.columns, "U columns == A columns");
-        assert_eq!(Vt.rows, A.columns, "Vt rows == A columns");
-        assert_eq!(Vt.columns, A.columns, "Vt columns == A columns");
-        assert_eq!(E.rows, A.columns, "E rows == A columns");
-        assert_eq!(E.columns, A.columns, "E columns == A columns");
-        assert!(E.is_square(), "E is square");
-        assert!(Vt.is_square(), "Vt is square");
-
-        println!("\n E is {} \n", E);
-        
-        //VtV = UtU = I
-        println!("\n U is {} \n", U);
-        let Ut = U.transpose();
-        let mut UtU: Matrix<f64> = &Ut * &U;
-        //UtU.round(4.);
-        println!("\n UtU is {} \n", UtU);
-        let V = Vt.transpose();
-        println!("\n V is {} \n", V);
-        let mut VtV: Matrix<f64> = &Vt * &V;
-        //VtV.round(4.);
-        println!("\n VtV is {} \n", VtV);
-
-        let mut UtUr = UtU.clone();
-        UtUr.round(3.);
-        let mut VtVr = VtV.clone();
-        VtVr.round(3.);
-
-        println!("\n UtUr is {} \n", UtUr);
-        println!("\n VtVr is {} \n", VtVr);
-
-        if !(A.is_square() && r < A.rows) {
-           assert!(eq_bound_eps(&UtU, &Matrix::id(UtU.rows)), "UtU == I");
-        }
-        
-        assert!(eq_bound_eps(&VtV, &Matrix::id(VtV.rows)), "VtV == I");
-
-        let AV: Matrix<f64> = A * &V;
-        let UE: Matrix<f64> = &U * &E;
-        assert!(eq_bound_eps(&AV, &UE), "AV == UE");
-
-        let E2: Matrix<f64> = &E * &E;
-        let VE2Vt: Matrix<f64> = &V * &(&E2 * &Vt);
-        assert!(eq_bound_eps(&AtA, &VE2Vt), "AtA == VE^2Vt");
-        
-        let EVt: Matrix<f64> = &E * &Vt;
-        let P: Matrix<f64> = &U * &EVt;
-
-        println!("\n P is {} \n", P);
-        assert!(eq_bound_eps(&A, &P), "A == P");
-        
-        
-        let mut e_diag = E.extract_diag();
-
-        e_diag.data.sort_by(|a, b| a.partial_cmp(b).unwrap());
-
-        let mut eig = AtA.eig(eps, 200);
-
-        eig = eig.iter_mut().map(|x| { if *x <= (f32::EPSILON as f64) { 0. } else { x.sqrt() } }).collect();
-        
-        eig.sort_by(|a, b| a.partial_cmp(b).unwrap());
-        
-        let ata_eig = Vector::new(eig.clone());
-
-        println!("\n e_diag is {} \n", e_diag);
-
-        println!("\n AtA eig sqrt is {:?} \n", eig);
-
-        assert!(eq_bound_eps_v(&e_diag, &ata_eig), "e_diag == ata_eig");
-    }
-
-
 
     #[test]
     fn eigenvectors_test3() {
@@ -2993,49 +2714,6 @@ mod tests {
         println!("\n equal {} \n", a == c);
 
         assert_eq!(a, c, "a == c");
-    }
-
-
-
-    //TODO move to matrix2
-    //#[test]
-    fn eig2x2_test() {
-
-        let max = 6.3;
-        let m = Matrix::rand(2, 2, max);
-        let id = Matrix::id(2);
-        let b = Vector::new(vec![0.,0.]);
-        
-        let e = Matrix::<f64>::eig2x2(&m).unwrap(); //?
-
-        println!("\n A is {}, {} \n", m, m.rank());
-        println!("\n e is {} {} \n", e.0, e.1);
-        
-        let A1 = &m - &(&id * e.0);
-        let A2 = &m - &(&id * e.1);
-
-        println!("\n A1 is {}, {} \n", A1, A1.rank());
-        println!("\n A2 is {}, {} \n", A2, A2.rank());
-
-        let lu_A1 = A1.lu();
-        let x1 = A1.solve(&b, &lu_A1).unwrap();
-
-        let lu_A2 = A2.lu();
-        let x2 = A2.solve(&b, &lu_A2).unwrap();
-
-        println!("\n x1 {} \n", x1);
-        println!("\n x2 {} \n", x2);
-
-        let y1: Vector<f64> = &A1 * &x1;
-        let y2: Vector<f64> = &A1 * &x1;
-
-        println!("\n y1 {} \n", y1);
-        println!("\n y2 {} \n", y2);
-
-        //rank
-        //there is a vector in null space
-
-        //assert!(false);
     }
 
 
