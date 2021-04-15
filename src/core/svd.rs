@@ -7,7 +7,7 @@ use super::{
     lu::{ block_lu, block_lu_threads_v2, lu, lu_v2 }, 
     matrix3::Matrix3, 
     matrix4::Matrix4, 
-    multiply::{ multiply_threads, strassen, mul_blocks, get_optimal_depth, decompose_blocks },
+    multiply::{ multiply_threads, mul_blocks, get_optimal_depth },
     utils::{eq_bound_eps_v, eq_eps_f64, eq_bound_eps, eq_bound}
 };
 /*
@@ -34,6 +34,54 @@ A = &A * &R;
 //VtV = UtU = I
 
 //TODO parallelize
+
+
+
+//TODO
+pub fn svd_jac_sym<T: Number>(A: &Matrix<T>) {
+    let size = 4;
+    let max = 5.;
+    let A: Matrix<f64> = Matrix::rand(size, size, max);
+    let At: Matrix<f64> = A.transpose();
+    let AtA1: Matrix<f64> = &At * &A;
+    let mut AtA: Matrix<f64> = &At * &A;
+    
+    for q in 0..3 {
+        for i in 0..AtA.rows {
+            for j in 1..AtA.columns {
+                let a = AtA[[i, i]];
+                let b = AtA[[i, j]];
+                let d = AtA[[j, j]];
+                let z = b / (a - d);
+                let t = ((2. * z).atan()) / 2.;
+                let c = t.cos();
+                let s = t.sin();
+
+                let mut R1: Matrix<f64> = Matrix::id(AtA.rows);
+                let mut R2: Matrix<f64> = Matrix::id(AtA.rows);
+
+                R1[[i, i]] =  c;
+                R1[[i, j]] =  s;
+                R1[[j, i]] =  -s;
+                R1[[j, j]] =  c;
+                
+                R2[[i, i]] =  c;
+                R2[[i, j]] =  -s;
+                R2[[j, i]] =  s;
+                R2[[j, j]] =  c;
+
+                println!("\n AtA before is {} \n", AtA);
+                
+                AtA = &(&R1 * &AtA) * &R2;
+
+                println!("\n a b d {} {} {} \n", a, b, d);
+
+                println!("\n AtA is {} \n", AtA);
+            }
+        }
+    }
+    
+}
 
 
 
@@ -155,8 +203,7 @@ mod tests {
     use std::{ f32::EPSILON as EP, f64::EPSILON, f64::consts::PI };
     use crate::{ core::{lu::{block_lu_threads, block_lu_threads_v2, lu}, matrix::{ Matrix }}, matrix, vector };
     use super::{
-        Matrix4, eq_eps_f64, Vector, P_compact, Number, get_optimal_depth, mul_blocks, 
-        strassen, decompose_blocks, eq_bound_eps_v, eq_bound_eps, eq_bound
+        Matrix4, eq_eps_f64, Vector, P_compact, Number, get_optimal_depth, mul_blocks, eq_bound_eps_v, eq_bound_eps, eq_bound
     };
 
 
@@ -172,7 +219,9 @@ mod tests {
 
         let eps = (f32::EPSILON) as f64;
 
-        svd_jac1_test0(&A, eps);
+        let (mut U, E, Vt) = A.svd(eps);
+        
+        //svd_jac1_test0(&A, eps);
     }
 
 

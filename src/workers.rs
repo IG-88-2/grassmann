@@ -23,7 +23,14 @@ use web_sys::{
 
 use crate::core::matrix::Matrix;
 
-
+/*
+queue
+workers factory
+workers tasks
+workers bounded by hardware concurrency 
+reuse workers
+spread available work through workers, establish queue
+*/
 
 #[derive(Debug)]
 pub struct WorkerState {

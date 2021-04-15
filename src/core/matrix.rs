@@ -32,38 +32,14 @@ use rand::Rng;
 use num_traits::{Float, Num, NumAssignOps, NumOps, PrimInt, Signed, cast, identities};
 use web_sys::Event;
 use crate::{Number, vector, workers::Workers};
-use super::{ lu::{ block_lu, block_lu_threads_v2, lu, lu_v2 }, matrix3::Matrix3, matrix4::Matrix4, multiply::{ multiply_threads, strassen, mul_blocks, get_optimal_depth, decompose_blocks }, 
+use super::{ init_const::{ init_const }, transpose::{ transpose }, id::{ id }, copy_to_f64::{ copy_to_f64 }, from_sab_f64::{ from_sab_f64 }, transfer_into_sab::{ transfer_into_sab }, into_sab::{ into_sab }, inv_diag::{ inv_diag }, inv_lower_triangular::{ inv_lower_triangular }, inv_upper_triangular::{ inv_upper_triangular }, inv::{ inv }, perm::{ perm }, rand_perm::{ rand_perm }, rank::{ rank }, partition::{ partition }, assemble::{ assemble }, cholesky::{ cholesky }, schur_complement::{ schur_complement }, lps::{ lps }, is_diagonally_dominant::{ is_diagonally_dominant }, is_identity::{ is_identity }, is_diag::{ is_diag }, is_upper_triangular::{ is_upper_triangular }, is_lower_triangular::{ is_lower_triangular }, is_permutation::{ is_permutation }, is_symmetric::{ is_symmetric }, into_basis::{ into_basis }, from_basis::{ from_basis }, eig::{ eig, eigenvectors, eig_decompose }, lu::{ block_lu, block_lu_threads_v2, lu, lu_v2 }, matrix3::Matrix3, matrix4::Matrix4, 
+multiply::{ multiply_threads, mul_blocks, get_optimal_depth }, conjugate::{ conjugate },
 svd::{ svd_jac1 }, qr::{qr, givens_qr, apply_Q_givens_hess, apply_Qt_givens_hess, givens_qr_upper_hessenberg, form_Qt_givens_hess, form_Q_givens_hess, apply_q_R, form_Q, form_P, house_qr, apply_q_b}, 
-solve::{solve_upper_triangular, solve, solve_lower_triangular}, utils::{eq_bound_eps, eq_bound, eq_bound_eps_v, eq_eps_f64}, vector::Vector };
+solve::{ solve_upper_triangular, solve, solve_lower_triangular }, utils::{eq_bound_eps, eq_bound, eq_bound_eps_v, eq_eps_f64}, vector::Vector };
+
+
 
 /*
-TODO 
-queue
-workers factory
-workers tasks
-workers bounded by hardware concurrency 
-reuse workers
-spread available work through workers, establish queue
-*/
-//foreign function interface call C routines
-//projection - properties and geometry of higher dimensional spaces (Cauchy–Schwarz inequality in n-dim)
-//sparse
-//complex numbers
-//monte carlo
-//kalman filter
-//spectral decomposition
-//mul
-//mul matrix vector
-//rref
-//lu
-//det
-//eig
-//compose
-//qr
-//cholesky
-//svd
-/*
-//iterative refinement LU
 use Newton method
 b known
 compute Ax - using obtained x
@@ -73,91 +49,41 @@ Au = d - solve for u
 next x = x - u (shifting x towards better accuracy)
 */
 
-//TODO translation belong to n + 1 class
-
-//action on a sphere
-//wedge
-//jacobian
-//conv
-//house
-//givens
-//pooling (pick number per block defined by stride length)
-//pickens
-//fft
-//wavelets
-//stochastic
-//markov
-//controllability matrix
-//diag
-//identity
-//vandermonde
-//matrix norm 2 norm 
-//perspective
-//rotation
-//reflection
-//permutation
-//upshift_permutation
-//downshift_permutation
-//ones
-//jordan form
-//toeplitz
-//symplectic
-//hamiltonian
-//krylov
-//markov
-//hamming
-//graph
-//dyad
-//translation
-//least squares
-//projection
+//debugger
+//det
+//inverse (pseudo, left, right)
+//matrix norm
+//matrix norm 2 norm
 //min
 //max
 //avg
-//add
-//subtract
-//complex matrix
-//tensor
-//mul float
-//mul matrix
-//transpose
-//apply
-//pow
-//kronecker
-//inv (pseudo, left, right)
-//distance between two subspaces
-//dist
-//lui
-//ref
-//rref
-//cofactors
-//det formula
+//off diag sum
+//numerical integration
+//numerical differentiation
+//jacobian
+//convolutions
+//pooling (pick number per block defined by stride length)
+//pickens
+//n dim rotation (Jacobi composition)
+//foreign function interface - call C routines
+//vandermonde
+//projection - properties and geometry of higher dimensional spaces (distance between two subspaces, Cauchy–Schwarz inequality in n-dim)
+//action on a sphere
+//sparse (hash table with entries tuples for indices)
+//complex numbers
+//monte carlo
+//kalman filter
+//fft
+//wavelets
+//wedge
+//cramer (co-factors)
+//markov
+//krylov subspace
+//controllability matrix
+//hamming
+//graph
+//kronecker product
 //update lu
-//is_positive_definite
-//is_invertible
-//is_upshift_permutation
-//is_downshift_permutation
-//is_exchange_permutation
-//is_identity
-//is_banded
-//is_square
-//is_skew_hermitian
-//is_hermitian
-//is_skew_symmetric
-//is_tridiagonal
-//is_upper_bidiagonal
-//is_lower_bidiagonal
-//is_permutation
-//is_upper_hessenberg
-//is_lower_hessenberg
-//TODO debugger
-//hash table with entries tuples for indices
-//assemble matrix from row vectors
-//assemble matrix from column vectors
-//matrix columns into vectors
-//matrix rows into vectors
-//multiply in threads A * col i - cols of B / N threads - k col per threads - assemble
-//hessian!
 
 
 
@@ -286,6 +212,12 @@ impl <T: Number> Matrix<T> {
         Vector::new(c)
     }
 
+
+    //extract submatrix - takes (i,j) matrix first or last entry and dimensions
+    //drop row
+    //drop column
+    //drop sub diagonal
+    //drop cross
     pub fn extract_row(&self) {}
 
     pub fn extract_columns(&self) {}
@@ -305,514 +237,148 @@ impl <T: Number> Matrix<T> {
         Vector::new(v)
     }
 
-    //extract submatrix - takes (i,j) matrix first or last entry and dimensions
-    //drop row
-    //drop column
-    //drop sub diagonal ?
-    //drop cross ?
+
+    
+    pub fn perm(size: usize) -> Vec<Matrix<f32>> {
+        
+        perm(size)
+
+    }
+
+
+    
+    pub fn inv(&self, lu: &lu<T>) -> Option<Matrix<T>> {
+        
+        inv(self, lu)
+
+    }
+
+
 
     pub fn lps(&self, n: usize) -> Matrix<T> {
-        let mut A = Matrix::new(n, n);
+        
+        lps(self, n)
 
-        for i in 0..n {
-            for j in 0..n {
-                A[[i,j]] = self[[i,j]];
-            }
-        }
-
-        A
-    }
-
-
-
-    pub fn lu(&self) -> lu<T> {
-        let mut lu = lu_v2(self, true, true);
-        lu.unwrap()
-    }
-
-
-
-    pub fn block_lu(&self) -> lu<T> {
-        let mut lu = block_lu(self);
-        lu.unwrap()
     }
 
 
 
     pub fn assemble(p: &Partition<T>) -> Matrix<T> {
 
-        //A11 r x r
-        //A12 r x (n - r)
-        //A21 (n - r) x r
-        //A22 (n - r) x (n - r)
+        assemble(p)
 
-        let rows = p.A11.rows + p.A21.rows;
-        
-        let columns = p.A11.columns + p.A12.columns; 
-        
-        let mut A = Matrix::new(rows, columns);
-        
-        for i in 0..p.A11.rows {
-            for j in 0..p.A11.columns {
-                A[[i, j]] = p.A11[[i, j]];
-            }
-        }
-
-        for i in 0..p.A12.rows {
-            for j in 0..p.A12.columns {
-                A[[i, j + p.A11.columns]] = p.A12[[i, j]];
-            }
-        }
-        
-        for i in 0..p.A21.rows {
-            for j in 0..p.A21.columns {
-                A[[i + p.A11.rows, j]] = p.A21[[i, j]];
-            }
-        }
-
-        for i in 0..p.A22.rows {
-            for j in 0..p.A22.columns {
-                A[[i + p.A11.rows, j + p.A11.columns]] = p.A22[[i, j]];
-            }
-        }
-
-        A
     }
 
 
 
     pub fn partition(&self, r: usize) -> Option<Partition<T>> {
         
-        if r >= self.columns || r >= self.rows {
-            return None;
-        }
+        partition(self, r)
 
-        //A11 r x r
-        //A12 r x (n - r)
-        //A21 (n - r) x r
-        //A22 (n - r) x (n - r)
-
-        let mut A11: Matrix<T> = Matrix::new(r, r);
-        let mut A12: Matrix<T> = Matrix::new(r, self.columns - r);
-        let mut A21: Matrix<T> = Matrix::new(self.rows - r, r);
-        let mut A22: Matrix<T> = Matrix::new(self.rows - r, self.columns - r);
-
-        for i in 0..r {
-            for j in 0..r {
-                A11[[i,j]] = self[[i, j]];
-            }
-        }
-
-        for i in 0..r {
-            for j in 0..(self.columns - r) {
-                A12[[i,j]] = self[[i,j + r]];
-            }
-        }
-
-        for i in 0..(self.rows - r) {
-            for j in 0..r {
-                A21[[i,j]] = self[[i + r, j]];
-            }
-        }
-
-        for i in 0..(self.rows - r) {
-            for j in 0..(self.columns - r) {
-                A22[[i,j]] = self[[i + r, j + r]];
-            }
-        }
-
-        Some(
-            Partition {
-                A11,
-                A12,
-                A21,
-                A22
-            }
-        )
     }
 
 
 
     pub fn rank(&self) -> u32 {
 
-        if self.columns > self.rows {
+        rank(self)
 
-            let At = self.transpose();
-
-            let lu = At.lu();
-
-            let rank = At.columns - lu.d.len();
-    
-            rank as u32
-
-        } else {
-
-            let lu = self.lu();
-
-            let rank = self.columns - lu.d.len();
-    
-            rank as u32
-        }
-    }
-
-
-
-    pub fn solve(&self, b: &Vector<T>, lu: &lu<T>) -> Option<Vector<T>> {
-        solve(b, lu, f32::EPSILON as f64)
     }
 
 
 
     pub fn rand_perm(size: usize) -> Matrix<T> {
 
-        let mut m: Matrix<T> = Matrix::id(size);
+        rand_perm(size)
 
-        let mut rng = rand::thread_rng();
-
-        let n: u32 = rng.gen_range(1, (size + 1) as u32);
-
-        for i in 0..n {
-            let high = (size - 1) as u32;
-            let j: u32 = rng.gen_range(0, high);
-            m.exchange_rows(i as usize, j as usize);
-        }
-
-        m
     }
 
 
-
-    //TODO improve, assert n!
-    fn generate_permutations(size: usize) -> Vec<Matrix<f32>> {
-        let m: Matrix<f32> = Matrix::id(size);
-        let mut list: Vec<Matrix<f32>> = Vec::new();
-        
-        for i in 0..size {
-            for j in 0..size {
-                if i != j {
-                    let mut k = Matrix::id(size);
-                    k.exchange_rows(i, j);
-                    list.push(k);
-                } 
-            }
-        }
-
-        let l = list.len();
-        for i in 0..l {
-            let A = &list[l - 1 - i];
-            let P = &list[i];
-            let p = A * P;
-            list.push(p);
-        }
-
-        list
-    }
-
-    
 
     pub fn apply(&mut self, f: &dyn Fn(T) -> T) {
+
         self.data = self.data.iter().map(|x:&T| f(*x)).collect();
+
     }
     
     
-
-    //left, right, pseudo, moore-penrose ?
-    pub fn inv(&self, lu: &lu<T>) -> Option<Matrix<T>> {
-       
-        if self.rows != self.columns {
-            return None;
-        }
-
-        if !lu.d.is_empty() {
-            return None;
-        }
-
-        let id: Matrix<T> = Matrix::id(self.rows);
-
-        let bs = id.into_basis();
-
-        let mut list: Vec<Vector<T>> = Vec::new();
-
-        for i in 0..bs.len() {
-            let b = &bs[i];
-            let b_inv = self.solve(b, &lu);
-            list.push(b_inv.unwrap());
-        }
-
-        let A_inv = Matrix::from_basis(list);
-
-        Some(
-            A_inv
-        )
-    }
-
-
-
-    pub fn schur_complement(p:&Partition<T>) -> Option<Matrix<T>> {
-
-        let A11_lu = p.A11.lu();
-
-        let A11_inv = p.A11.inv(&A11_lu);
-        
-        if A11_inv.is_none() {
-            return None;
-        }
-
-        let A11_inv = A11_inv.unwrap();
-        
-        let result: Matrix<T> = &(&p.A21 * &A11_inv) * &p.A12;
-        
-        Some(result)
-    }
-
-    
-
-    pub fn cholesky(&self) -> Option<Matrix<T>> {
-
-        let zero = T::from_f64(0.).unwrap();
-
-        let mut L = Matrix::new(self.rows, self.columns);
-
-        for i in 0..self.rows {
-
-            for j in i..self.columns {
-
-                let mut s = self[[i, j]];
-
-                for k in 0..i {
-                    s -= L[[k, i]] * L[[k, j]]; 
-                }
-                
-                if i == j {
-                    
-                    if s <= zero {
-                        return None;
-                    }
-                    
-                    let r = T::to_f64(&s).unwrap().sqrt();
-
-                    L[[i, j]] = T::from_f64(r).unwrap();
-                    
-                } else {
-                    
-                    L[[i, j]] = s / L[[i, i]];
-                }
-            }
-        }
-
-        Some(L)
-    }
-
-
 
     pub fn inv_upper_triangular(&self) -> Option<Matrix<T>> {
 
-        //assert!(self.is_upper_triangular(), "matrix should be upper triangular");
+        inv_upper_triangular(self)
 
-        if self.rows != self.columns {
-            return None;
-        }
-
-        let id: Matrix<T> = Matrix::id(self.rows);
-
-        let bs = id.into_basis();
-
-        let mut list: Vec<Vector<T>> = Vec::new();
-
-        for i in 0..bs.len() {
-            let b = &bs[i];
-            let b_inv = solve_upper_triangular(self, b);
-            if b_inv.is_none() {
-                return None;
-            }
-            list.push(b_inv.unwrap());
-        }
-
-        let A_inv = Matrix::from_basis(list);
-
-        Some(
-            A_inv
-        )
     }
 
 
 
     pub fn inv_lower_triangular(&self) -> Option<Matrix<T>> {
 
-        assert!(self.is_lower_triangular(), "matrix should be lower triangular");
+        inv_lower_triangular(self)
 
-        if self.rows != self.columns {
-            return None;
-        }
-
-        let id: Matrix<T> = Matrix::id(self.rows);
-
-        let bs = id.into_basis();
-
-        let mut list: Vec<Vector<T>> = Vec::new();
-
-        for i in 0..bs.len() {
-            let b = &bs[i];
-            let b_inv = solve_lower_triangular(self, b);
-            if b_inv.is_none() {
-                return None;
-            }
-            list.push(b_inv.unwrap());
-        }
-
-        let A_inv = Matrix::from_basis(list);
-
-        Some(
-            A_inv
-        )
     }
 
 
 
     pub fn inv_diag(&self) -> Matrix<T> {
 
-        assert!(self.is_diag(), "inv_diag matrix should be diagonal");
+        inv_diag(self)
 
-        assert!(self.is_square(), "inv_diag matrix should be square");
-
-        let one = T::from_f64(1.).unwrap();
-        
-        let mut A_inv: Matrix<T> = Matrix::new(self.rows, self.columns);
-
-        for i in 0..self.rows {
-            A_inv[[i, i]] = one / self[[i, i]];
-        }
-
-        A_inv
     }
 
 
 
     pub fn into_sab(&mut self) -> SharedArrayBuffer {
 
-        let size = size_of::<T>();
+        into_sab(self)
 
-        let len = self.size() * size;
-
-        let mem = SharedArrayBuffer::new(len as u32);
-
-        let mut m = Uint8Array::new( &mem );
-
-        for(i,v) in self.data.iter().enumerate() {
-            let next = v.to_ne_bytes();
-            for j in 0..size {
-                m.set_index((i * size + j) as u32, next[j]);
-            }
-        }
-
-        mem
     }
 
 
 
     pub fn transfer_into_sab(A:&Matrix<f64>, B:&Matrix<f64>) -> SharedArrayBuffer {
-        let sa = A.mem_size();
-        let sb = B.mem_size();
-        let sc = A.rows * B.columns * size_of::<f32>();
-        let size = sa + sb + sc;
-    
-        unsafe {
-            log(&format!("\n ready to allocated {} bytes in sab \n", size));
-        }
-    
-        let mut s = SharedArrayBuffer::new(size as u32);
         
-        let v = Float64Array::new(&s);
-        v.fill(0., 0, v.length());
-    
-        let mut v1 = Float64Array::new_with_byte_offset(&s, 0);
-        let mut v2 = Float64Array::new_with_byte_offset(&s, sa as u32); //should it be + 1 ?
-    
-        Matrix::<f64>::copy_to_f64(&A, &mut v1);
-        Matrix::<f64>::copy_to_f64(&B, &mut v2);
-    
-        unsafe {
-            log(&format!("\n allocated {} bytes in sab \n", size));
-        }
-    
-        s
+        transfer_into_sab(A, B)
+
     }
 
 
 
     pub fn from_sab_f64(rows: usize, columns: usize, data: &SharedArrayBuffer) -> Matrix<f64> {
 
-        let mut m = Matrix::new(rows, columns);
+        from_sab_f64(rows, columns, data)
 
-        let d = Float64Array::new(data);
-        
-        let size = rows * columns;
-
-        let mut v = vec![0.; size];
-
-        for i in 0..size {
-            v[i] = d.get_index(i as u32);
-        }
-
-        m.data = v;
-        
-        m
     }
     
 
 
     pub fn copy_to_f64(m: &Matrix<f64>, dst: &mut Float64Array) {
 
-        for i in 0..m.rows {
-            for j in 0..m.columns {
-                let idx = i * m.columns + j;
-                dst.set_index(idx as u32, m[[i,j]]);
-            }
-        }
+        copy_to_f64(m, dst)
+
     }
 
 
 
     pub fn id(size: usize) -> Matrix<T> {
 
-        let zero = T::from_i32(0).unwrap();
-        
-        let mut data: Vec<T> = vec![zero; size * size];
-        
-        for i in 0..size {
-            data[(size * i) + i] = T::from_i32(1).unwrap();
-        }
-        
-        Matrix {
-            data,
-            rows: size,
-            columns: size
-        }
+        id(size)
+
     }
 
 
 
     pub fn transpose(&self) -> Matrix<T> {
 
-        let mut t = Matrix::new(self.columns, self.rows);
-    
-        for i in 0..self.rows {
-            for j in 0..self.columns {
-                t[[j,i]] = self[[i,j]];
-            }
-        }
-    
-        t
+        transpose(self)
+
     }
 
 
 
     pub fn init_const(&mut self, c: T) {
-        for i in 0..self.columns {
-            for j in 0..self.rows {
-                self[[j,i]] = c;
-            }
-        }
+        
+        init_const(self, c)
+
     }
 
 
@@ -832,12 +398,6 @@ impl <T: Number> Matrix<T> {
         }
 
         A
-    }
-
-
-
-    pub fn change_basis() {
-
     }
 
 
@@ -1083,14 +643,13 @@ impl <T: Number> Matrix<T> {
     pub fn givens_theta(&self, i: usize, j: usize) -> f64 {
         let m = self[[i, j]];
         let d = self[[i - 1, j]];
-
-        //review ??
+        
         if d == T::from_f64(0.).unwrap() {
-            return 0.;
+           return 0.;
         }
 
         let x: f64 = T::to_f64(&(m / d)).unwrap();
-        //TODO atan domain ??? verify threshold pi / 2 
+        
         let theta = x.atan();
 
         theta
@@ -1253,10 +812,28 @@ impl <T: Number> Matrix<T> {
 
 
     
-    pub fn qr(&self) -> qr<T> {
-        //givens_qr
-        house_qr(self)
+   
+    pub fn eig2x2(m:&Matrix<f64>) -> Option<(f64, f64)> {
 
+        let t = m.trace();
+        
+        let a = m[[0, 0]]; 
+        let d = m[[1, 1]];
+        let b = m[[0, 1]];
+        let c = m[[1, 0]];
+
+        let d = a * d - b * c;
+
+        let r = t.powf(2.) - 4. * d;
+
+        if r < 0. {
+            return None;
+        }
+
+        let y1 = (t + r.sqrt()) / 2.;
+        let y2 = (t - r.sqrt()) / 2.;
+
+        Some((y1, y2))
     }
 
 
@@ -1270,183 +847,6 @@ impl <T: Number> Matrix<T> {
         };
 
         self.apply(&f);
-    }
-
-
-
-    pub fn eigenvectors(&self, q: &Vec<f64>) -> Vec<(f64, Vector<T>)> {
-
-        let mut result: Vec<(f64, Vector<T>)> = Vec::new();
-
-        let b: Vector<T> = Vector::zeros(self.columns);
-
-        //println!("\n eigenvectors start b {}, rank {} \n", b, self.rank());
-
-        for i in 0..q.len() {
-
-            let A: Matrix<T> = self - &(Matrix::id(self.rows) * T::from_f64(q[i]).unwrap());
-
-            //println!("\n ({}) - {} \n", i, A.rank());
-            
-            let lu = A.lu();
-
-            let x = A.solve(&b, &lu);
-            
-            if x.is_some() {
-                let t = (q[i], x.unwrap());
-                result.push(t);
-            }
-        }
-
-        result
-    }
-
-
-
-    /*
-    let f = move |y: T| {
-        let x = T::to_f64(&y).unwrap();
-        let c = (2. as f64).powf(8.);
-        T::from_f64((x * c).round() / c).unwrap()
-    };
-    */
-
-    
-
-    //refactor - no lps, send whole matrix and boundaries to subroutines 
-    //TODO for symmetric matrix eigenvectors should be inside Q (verify against LU)
-    //TODO exceptional shifts 
-    //TODO double shift
-    pub fn eig(&self, precision: f64, steps: i32) -> Vec<f64> {
-        
-        assert!(self.rows == self.columns, "eig: A should be square");
-        
-        let s = 2;
-
-        let w = true;
-
-        let zero = T::from_f64(0.).unwrap();
-        
-        let mut A = self.upper_hessenberg();
-
-        let mut q = Vec::new();
-
-        let mut x = zero;
-
-
-
-        for i in 0..steps {
-
-            if A.rows <= 1 && A.columns <= 1 {
-               let d = T::to_f64(&A[[0, 0]]).unwrap();
-               q.push(d);
-               //let (mut R, q) = givens_qr_upper_hessenberg(A);
-               //let Q: Matrix<T> = form_Qt_givens_hess(&q);
-               break;
-            }
-
-            if i > 0 && (i % s) == 0 {
-                let k = A.rows - 2;
-
-                let a = T::to_f64(&A[[k, k]]).unwrap();
-                let b = T::to_f64(&A[[k, k + 1]]).unwrap();
-                let c = T::to_f64(&A[[k + 1, k]]).unwrap();
-                let d = T::to_f64(&A[[k + 1, k + 1]]).unwrap();
-                
-                let u = c.abs();
-                
-                if u < precision {
-
-                    q.push(d);
-
-                    A = A.lps(A.rows - 1);
-
-                } else {
-
-                    if w {
-                        let l = matrix![f64, 
-                            a, b;
-                            c, d;
-                        ];
-
-                        let r = Matrix::<f64>::eig2x2(&l);
-
-                        if r.is_none() {
-
-                            x = T::from_f64(d).unwrap();
-
-                        } else {
-                            
-                            let (e1, e2) = r.unwrap();
-
-                            let d1 = e1 - d;
-
-                            let d2 = e2 - d;
-
-                            if d1.abs() < d2.abs() {
-                                x = T::from_f64(e1).unwrap();
-                            } else {
-                                x = T::from_f64(e2).unwrap();
-                            }
-                        }
-                    } else {
-                        x = T::from_f64(d).unwrap();
-                    }
-                }
-            }
-            
-            if x != zero {
-                for j in 0..A.rows {
-                    A[[j, j]] -= x;
-                }
-            }
-            
-            let (mut R, q) = givens_qr_upper_hessenberg(A);
-
-            apply_Qt_givens_hess(&mut R, &q);
-            
-            A = R;
-            
-            if x != zero {
-                for j in 0..A.rows {
-                    A[[j, j]] += x;
-                }
-            }
-            
-            x = zero;
-        }
-
-        q
-    }
-
-
-
-    pub fn eig_decompose(&self) -> Option<(Matrix<T>, Matrix<T>, Matrix<T>)> {
-        
-        let precision = f32::EPSILON as f64;
-        let steps = 1000;
-        let mut q = self.eig(precision, steps);
-        let v = self.eigenvectors(&q);
-        
-        let ps: Vec<T> = v.iter().map(|t| { T::from_f64(t.0).unwrap() }).collect();
-        let ps: Vector<T> = Vector::new(ps);
-        let vs: Vec<Vector<T>> = v.iter().map(|t| { t.1.clone() }).collect();
-
-        let mut L: Matrix<T> = Matrix::new(self.rows, self.columns);
-
-        L.set_diag(ps);
-        
-        let Y = Matrix::from_basis(vs);
-        let lu = Y.lu();
-        let Y_inv = Y.inv(&lu);
-
-        if Y_inv.is_none() {
-           return None;
-        }
-
-        let Y_inv = Y_inv.unwrap();
-
-        Some((Y, L, Y_inv))
     }
 
 
@@ -1601,170 +1001,64 @@ impl <T: Number> Matrix<T> {
 
     pub fn is_diagonally_dominant(&self) -> bool {
 
-        if self.rows != self.columns {
-           return false;
-        }
+        is_diagonally_dominant(self)
 
-        let zero = T::from_f64(0.).unwrap();
-
-        for i in 0..self.rows {
-
-            let mut acc = zero;
-
-            let mut p = zero;
-
-            for j in 0..self.columns {
-            
-                if i == j {
-                   p = self[[i, j]];
-                } else {
-                   acc += self[[i, j]];
-                }
-            }
-
-            if p.abs() < acc.abs() {
-                return false;
-            }
-        }
-        
-        true
     }
 
 
 
     pub fn is_identity(&self) -> bool {
 
-        let zero = T::from_f64(0.).unwrap();
-        
-        let one = T::from_f64(1.).unwrap();
+        is_identity(self)
 
-        for i in 0..self.rows {
-            for j in 0..self.columns {
-                if i == j {
-                    if self[[i, j]] != one {
-                        return false;
-                    }
-                } else {
-                    if self[[i, j]] != zero {
-                        return false;
-                    }
-                }
-            }
-        }
-
-        true
     }
 
 
 
     pub fn is_diag(&self) -> bool {
-        let zero = T::from_f64(0.).unwrap();
 
-        for i in 0..self.rows {
-            for j in 0..self.columns {
-                if i == j {
-                    continue;
-                }
-                if self[[i, j]] != zero {
-                    return false;
-                } 
-            }
-        }
+        is_diag(self)
 
-        true
-    }
-
-
-
-    pub fn is_square(&self) -> bool {
-        self.columns == self.rows
     }
 
 
 
     pub fn is_upper_triangular(&self) -> bool {
         
-        if !self.is_square() {
-            return false;
-        }
+        is_upper_triangular(self)
 
-        let zero = T::from_f64(0.).unwrap();
-        
-        for i in 0..self.rows {
-
-            for j in 0..i {
-
-                if self[[i, j]] != zero {
-
-                   return false;
-                }
-            }
-        }
-
-        true
     }
 
 
 
     pub fn is_lower_triangular(&self) -> bool {
 
-        if !self.is_square() {
-            return false;
-        }
+        is_lower_triangular(self)
 
-        let zero = T::from_f64(0.).unwrap();
-        
-        for i in 0..self.rows {
+    }
 
-            for j in (i + 1)..self.columns {
 
-                if self[[i, j]] != zero {
 
-                    return false;
+    pub fn is_square(&self) -> bool {
 
-                }
-            }
-        }
+        self.columns == self.rows
 
-        true
     }
 
 
 
     pub fn is_permutation(&self) -> bool {
         
-        let one = T::from_i32(1).unwrap();
-        
-        let t = Vector::new(vec![one; self.columns]);
-        
-        let r = self * &t;
+        is_permutation(self)
 
-        r == t
     }
 
 
 
     pub fn is_symmetric(&self) -> bool {
 
-        if self.rows != self.columns || self.rows <= 1 {
-           return false; 
-        }
+        is_symmetric(self)
 
-        for i in 0..(self.rows - 1) {
-
-            let start = i + 1;
-
-            for j in start..self.columns {
-                
-                if self[[i,j]] != self[[j,i]] {
-
-                    return false;
-
-                }
-            }
-        }
-
-        true
     }
 
 
@@ -1774,153 +1068,111 @@ impl <T: Number> Matrix<T> {
         let zero = T::from_f64(0.).unwrap();
 
         self.data.iter().all(|x| { *x == zero })
+
     } 
 
 
 
-    pub fn from_basis(
-        b: Vec<Vector<T>>
-    ) -> Matrix<T> {
+    pub fn from_basis(b: Vec<Vector<T>>) -> Matrix<T> {
         
-        if b.len() == 0 {
-           return Matrix::new(0, 0);
-        }
+        from_basis(b)
 
-        let rows = b[0].data.len();
-
-        let equal = b.iter().all(|v| v.data.len() == rows);
-        
-        assert!(equal, "\n from basis: vectors should have equal length \n");
-
-        let columns = b.len();
-        
-        let mut m = Matrix::new(rows, columns);
-
-        for i in 0..columns {
-            let next = &b[i];
-            for j in 0..rows {
-                m[[j, i]] = next[j];
-            }
-        }
-
-        m
     }
 
 
 
     pub fn into_basis(&self) -> Vec<Vector<T>> {
 
-        let zero = T::from_f64(0.).unwrap();
-        let mut b: Vec<Vector<T>> = Vec::new();
+        into_basis(self)
 
-        for i in 0..self.columns {
-            let mut v = Vector::new(vec![zero; self.rows]);
-            for j in 0..self.rows {
-                v[j] = self[[j, i]];
-            }
-            b.push(v);
-        }
-
-        b
-    }
-
-
-
-    pub fn eig2x2(m:&Matrix<f64>) -> Option<(f64, f64)> {
-
-        let t = m.trace();
-        
-        let a = m[[0, 0]]; 
-        let d = m[[1, 1]];
-        let b = m[[0, 1]];
-        let c = m[[1, 0]];
-
-        let d = a * d - b * c;
-
-        let r = t.powf(2.) - 4. * d;
-
-        if r < 0. {
-            return None;
-        }
-
-        let y1 = (t + r.sqrt()) / 2.;
-        let y2 = (t - r.sqrt()) / 2.;
-
-        Some((y1, y2))
     }
 
 
 
     pub fn conjugate(&self, S: &Matrix<T>) -> Option<Matrix<T>> {
 
-        let lu = S.lu();
+        conjugate(self, S)
         
-        let S_inv = S.inv(&lu);
-        
-        if S_inv.is_none() {
-           return None;
-        }
-
-        let inv = S_inv.unwrap();
-        
-        let K: Matrix<T> = &(&inv * self) * S;
-
-        Some(K)
     }
 
-    //TODO matrix norms
 
-    pub fn svd_jac_sym(&self) {
-        
-        let size = 4;
-        let max = 5.;
-        let A: Matrix<f64> = Matrix::rand(size, size, max);
-        let At: Matrix<f64> = A.transpose();
-        let AtA1: Matrix<f64> = &At * &A;
 
-        let mut AtA: Matrix<f64> = &At * &A;
+    pub fn schur_complement(p:&Partition<T>) -> Option<Matrix<T>> {
 
-        //TODO off diag sum
-        
-        for q in 0..3 {
-            for i in 0..AtA.rows {
-                for j in 1..AtA.columns {
-                    let a = AtA[[i, i]];
-                    let b = AtA[[i, j]];
-                    let d = AtA[[j, j]];
-                    let z = b / (a - d);
-                    let t = ((2. * z).atan()) / 2.;
-                    let c = t.cos();
-                    let s = t.sin();
+        schur_complement(p)
+
+    }
+
     
-                    let mut R1: Matrix<f64> = Matrix::id(AtA.rows);
-                    let mut R2: Matrix<f64> = Matrix::id(AtA.rows);
-    
-                    R1[[i, i]] =  c;
-                    R1[[i, j]] =  s;
-                    R1[[j, i]] =  -s;
-                    R1[[j, j]] =  c;
-                    
-                    R2[[i, i]] =  c;
-                    R2[[i, j]] =  -s;
-                    R2[[j, i]] =  s;
-                    R2[[j, j]] =  c;
-    
-                    println!("\n AtA before is {} \n", AtA);
-                    
-                    AtA = &(&R1 * &AtA) * &R2;
-    
-                    println!("\n a b d {} {} {} \n", a, b, d);
-    
-                    println!("\n AtA is {} \n", AtA);
-                }
-            }
-        }
-        
+
+    pub fn cholesky(&self) -> Option<Matrix<T>> {
+
+        cholesky(self)
+
+    }
+
+
+
+    pub fn solve(&self, b: &Vector<T>, lu: &lu<T>) -> Option<Vector<T>> {
+
+        solve(b, lu, f32::EPSILON as f64)
+
+    }
+
+
+
+    pub fn lu(&self) -> lu<T> {
+
+        let mut lu = lu_v2(self, true, true);
+
+        lu.unwrap()
+
+    }
+
+
+
+    pub fn block_lu(&self) -> lu<T> {
+
+        let mut lu = block_lu(self);
+
+        lu.unwrap()
+
     }
     
 
+
+    pub fn qr(&self) -> qr<T> {
+        //givens_qr
+        house_qr(self)
+
+    }
+
     
+
+    pub fn eigenvectors(&self, q: &Vec<f64>) -> Vec<(f64, Vector<T>)> {
+
+        eigenvectors(self, q) 
+        
+    }
+
+
+    
+    pub fn eig(&self, precision: f64, steps: i32) -> Vec<f64> {
+
+        eig(self, precision, steps)
+
+    }
+
+
+
+    pub fn eig_decompose(&self) -> Option<(Matrix<T>, Matrix<T>, Matrix<T>)> {
+
+        eig_decompose(self)
+
+    }
+
+
+
     pub fn svd(mut self, eps: f64) -> (Matrix<T>, Matrix<T>, Matrix<T>) {
         
         svd_jac1(self, eps)
@@ -2503,221 +1755,11 @@ mod tests {
     use super::{
         givens_qr_upper_hessenberg, givens_qr, form_Qt_givens_hess, form_Q_givens_hess, Matrix4,
         apply_q_b, apply_q_R, form_Q, form_P, block_lu, eq_eps_f64, Vector, P_compact, Number,
-        get_optimal_depth, eq_bound_eps, eq_bound, multiply, mul_blocks, strassen, decompose_blocks, eq_bound_eps_v
+        get_optimal_depth, eq_bound_eps, eq_bound, multiply, mul_blocks, eq_bound_eps_v
     };
 
 
-
-    #[test]
-    fn eigenvectors_test3() {
-
-        let test = 20;
-
-        for i in 2..test {
-            let size = i;
-            let max = 5.;
-            let zero: Vector<f64> = Vector::zeros(size);
-            let mut A: Matrix<f64> = Matrix::rand_diag(size, max);
-            let mut a: Vector<f64> = A.extract_diag();
-            let S: Matrix<f64> = Matrix::rand(size, size, max);
-            let K: Matrix<f64> = A.conjugate(&S).unwrap();
     
-            let R = K.eig_decompose();
-    
-            if R.is_some() {
-                let (S, Y, S_inv) = R.unwrap();
-                println!("\n K is {} \n", K);
-                println!("\n S is {} \n", S);
-                println!("\n Y is {} \n", Y);
-                println!("\n S_inv is {} \n", S_inv);
-    
-                let P: Matrix<f64> = &(&S * &Y) * &S_inv;
-            
-                let diff = &P - &K;
-                
-                let bound = f32::EPSILON * 10.;
-
-                println!("\n ({})diff {} \n", bound, diff);
-
-                assert!(eq_bound(&K, &P, bound as f64), "\n eigenvectors_test3 K equal to P \n");
-            }
-        }
-    }
-
-
-
-    #[test]
-    fn eigenvectors_test2() {
-        
-        fn round(n:&f64) -> f64 {
-            let c = (2. as f64).powf(8.);
-            (n * c).round() / c
-        }
-
-        let test = 20;
-
-        for i in 2..test {
-            let size = i;
-            let max = 5.;
-            let zero: Vector<f64> = Vector::zeros(size);
-            let mut A: Matrix<f64> = Matrix::rand_diag(size, max);
-            let mut a = A.extract_diag();
-            let S: Matrix<f64> = Matrix::rand(size, size, max);
-            let K: Matrix<f64> = A.conjugate(&S).unwrap();
-            let precision = f32::EPSILON as f64;
-            let steps = 1000;
-            let mut q = K.eig(precision, steps);
-            let v = K.eigenvectors(&q);
-    
-            for i in 0..v.len() {
-                let (e, k) = &v[i];
-                let id: Matrix<f64> = Matrix::id(size);
-                let M: Matrix<f64> = id * *e;
-                let mut y: Vector<f64> = &(&K - &M) * k;
-                y.apply(round);
-                println!("\n y {} \n", y);
-                assert!(eq_bound_eps_v(&zero, &y));
-            }
-        }
-    }
-
-
-    
-    #[test]
-    fn eigenvectors_test1() {
-
-        let test = 20;
-
-        for i in 2..test {
-
-            let size = i;
-        
-            let max = 5.0;
-            
-            let mut K: Matrix<f64> = Matrix::rand_diag(size, max);
-            
-            let precision = f32::EPSILON as f64;
-            
-            let steps = 1000;
-            
-            let q = K.eig(precision, steps);
-            
-            let v = K.eigenvectors(&q);
-    
-            let vs: Vec<Vector<f64>> = v.iter().rev().map(|t| { t.1.clone() }).collect();
-    
-            let y = Matrix::from_basis(vs);
-    
-            let id: Matrix<f64> = Matrix::id(size);
-    
-            assert_eq!(y, id, "y == id");
-        }
-    }
-
-
-
-    #[test]
-    fn eig4() {
-
-        let m = Matrix4::rotation(0.4, 0.3, 0.2);
-        let K: Matrix<f64> = m.into();
-        let K: Matrix<f64> = K.lps(3);
-
-        let precision = f32::EPSILON as f64;
-        let steps = 10000;
-        let mut q = K.eig(precision, steps);
-
-        //why eigenvalues are not empty ?
-
-        println!("\n K is {} \n result 3 is {:?} \n", K, q);
-
-        //assert!(false);
-    }
-
-
-
-    #[test]
-    fn eig3() {
-        
-        let K = matrix![f64,
-            0., 0., 0., 1.;
-            1., 0., 0., 0.;
-            0., 1., 0., 0.;
-            0., 0., 1., 0.;
-        ];
-        let precision = f32::EPSILON as f64;
-        let steps = 1000;
-        let mut q = K.eig(precision, steps);
-
-        println!("\n result 2 is {:?} \n", q);
-    }
-
-
-
-    #[test]
-    fn eig2() {
-        
-        let K = matrix![f64,
-            0., 1.;
-            1., 0.;
-        ];
-        let precision = f32::EPSILON as f64;
-        let steps = 1000;
-        let mut q = K.eig(precision, steps);
-
-        println!("\n result is {:?} \n", q);
-    }
-
-
-
-    #[test]
-    fn eig1() {
-        
-        let test = 20;
-
-        for i in 2..test {
-            eig_test(i);
-        }
-    }
-
-
-
-    fn eig_test(i: usize) {
-
-        println!("\n eig test {} \n", i);
-
-        let f = move |x: &mut f64| -> f64 {
-            let c = (2. as f64).powf(12.);
-            (*x * c).round() / c
-        };
-
-        let size = i;
-        let max = 5.;
-        let mut A: Matrix<f64> = Matrix::rand_diag(size, max);
-        let mut a = A.extract_diag();
-        let S: Matrix<f64> = Matrix::rand(size, size, max);
-        let K: Matrix<f64> = A.conjugate(&S).unwrap();
-        
-        let precision = f32::EPSILON as f64;
-        let steps = 1000;
-        let mut q = K.eig(precision, steps);
-        let mut c = Vector::new(q);
-        
-        c.data = c.data.iter_mut().map(&f).collect();
-        a.data = a.data.iter_mut().map(&f).collect();
-
-        c.data.sort_by(|a, b| b.partial_cmp(a).unwrap());
-        a.data.sort_by(|a, b| b.partial_cmp(a).unwrap());
-        
-        //println!("\n expected {:?} \n", a.data);
-        println!("\n result {:?} \n", c.data);
-        println!("\n equal {} \n", a == c);
-
-        assert_eq!(a, c, "a == c");
-    }
-
-
-
     #[test]
     fn givens_qr_upper_hessenberg_test() {
 
@@ -2732,7 +1774,7 @@ mod tests {
         let mut A: Matrix<f64> = Matrix::rand(size, size, max);
         let H = A.upper_hessenberg();
 
-        let (R, q) = givens_qr_upper_hessenberg(H.clone());
+        let (R, q) = givens_qr_upper_hessenberg(H.clone(), H.columns);
         
         let Q = form_Qt_givens_hess(&q);
         let Qt = Q.transpose();
@@ -2788,218 +1830,8 @@ mod tests {
 
 
 
-    #[derive(PartialEq)]
-    enum qr_strategy {
-        house,
-        givens
-    }
-
-
-
-    #[test]
-    fn qr_test1() {
-        
-        let test = 12;
-        
-        let mut rng = rand::thread_rng();
-        
-        for i in 2..test {
-            qr_test_house(i, 0);
-            qr_test_house(i, 1);
-            qr_test_house(i, 2);
-            qr_test_house(i, 3);
-        }
-        
-        for i in 2..test {
-            //TODO
-            //qr_test_givens(i, 0);
-            //qr_test_givens(i, 1);
-        }
-    }
     
-
-
-    /*
-    n = 3
-    matrix![f64,
-        3.989662529213885, 1.3111352510863685, 0.6327979653493032, 1.2585828396533043, 0.792539040178466;
-        4.805035302184294, 3.7402061208531254, 2.9985124817163875, 3.381193980206488, 2.184574576145316;
-        0.10371257771584097, 3.9133316980925663, 4.030820968277014, 3.3811419789265256, 2.2285952196261243;
-        1.2053697910852812, 3.882821367703303, 3.7993293346176085, 3.389835902404731, 2.2240047433478924;
-        0.18136419580157326, 1.6480633417317732, 1.6725567663731522, 1.4283145902435774, 0.9401488909222216;
-    ];
-    n = 2
-    matrix![f64,
-        1.3924180940913122, 1.4694711581302726, 4.789884030718086, 2.2415031107785697;
-        2.3957069426959077, 1.6044759254014513, 4.92106057298537, 2.638089492954054;
-        3.8708880722626837, 0.7095293413582591, 1.184120216529141, 1.7789444693510312;
-        3.4807248422705097, 1.410004021172048, 3.8392722080247497, 2.6178956559366244;
-    ];
-    */
-    fn qr_test_givens(i:usize, case:u32) {
-        let mut rng = rand::thread_rng();
-        
-        let f = move |x: f64| {
-            let c = (2. as f64).powf(32.);
-            (x * c).round() / c
-        };
-
-        let size = i;
-        let max = 5.;
-        let mut n = 0;
-        let mut A: Matrix<f64> = matrix![f64,
-            0., -2.9, -4.5, -0.03, 1.22, -3.6, 1.67, 2.79, -4.23;
-            3.65, 0.72, 1.97, -4.76, 2.45, -2.89, -1.08, 4.77, 0.4;
-            0.74, 0.05, -2.37, -2.46, -3.43, 3.41, -1.6, -4.53, -3.6;
-            4.09, 2.62, -0.29, 1.14, -1.44, -2.16, -1.81, 4.43, -0.02;
-            -4.21, 1.75, 1.72, -3.88, -1.68, -3.06, 2.12, 3.03, 4.28;
-            -0.27, 4.4, -3.53, -0.7, 2.4, -4.91, 3.67, -1.61, 0.65;
-            2.43, 0.91, -4.45, -1.67, 0.8, 1.24, -1.48, -4.82, 3.64;
-            -4.93, -3.96, 2.48, 3.01, -2.91, 1.34, -3.18, -1.41, -2.96;
-            -4.51, 4.93, 0.31, -3.97, 0.55, 4.92, 3.65, 4.84, 0.37;
-        ];
-        //Matrix::rand(size, size, max);
-        
-        if case == 1 {
-            //arbitrary singular
-            n = rng.gen_range(0, size - 1);
-            A = Matrix::rand_sing2(size, n, max);
-        }
-
-        println!("qr_test({}): case {} -> A({},{}), A rank {}, n {}, size {} \n", i, case, A.rows, A.columns, A.rank(), n, size);
-        println!("\n A({},{}) {} \n", A.rows, A.columns, A);
-
-        let mut qr = givens_qr(&A);
-        let Q = qr.Q.unwrap();
-        let Qt = qr.Qt.unwrap();
-        let mut R = qr.R.clone();
-
-        let b: Vector<f64> = Vector::rand(R.rows as u32, max);
-
-        R.apply(&f);
-        
-        println!("\n Q({},{}) {} \n", Q.rows, Q.columns, Q);
-        println!("\n R({},{}) {} \n", R.rows, R.columns, R);
-        println!("\n R is {} \n", R);
-
-        assert_eq!(A.rows, R.rows, "A.rows = R.rows");
-        assert_eq!(A.columns, R.columns, "A.columns = R.columns");
-        
-        let QR: Matrix<f64> = &Q * &qr.R;
-        let mut QtQ: Matrix<f64> = &Q * &Qt;
-        
-        QtQ.apply(&f);
-
-        let id0 = Matrix::id(QtQ.rows);
-
-        println!("\n QtQ {} \n", QtQ);
-        println!("\n QR {} \n", QR);
-        assert_eq!(QtQ, id0, "QtQ == id");
-        assert!(eq_bound_eps(&A, &QR), "A = QR");
-
-        if R.is_square() { 
-            assert!(R.is_upper_triangular(), "R is upper triangular");
-        }
-    }
-
-
-
-    fn qr_test_house(i:usize, case:u32) {
-
-        let mut rng = rand::thread_rng();
-        
-        let f = move |x: f64| {
-            let c = (2. as f64).powf(32.);
-            (x * c).round() / c
-        };
-
-        let size = i; //5;
-        let max = 5.;
-        let mut n = 0; //3;
-        let mut A: Matrix<f64> = Matrix::rand(size, size, max);
-        
-        if case == 1 {
-            //arbitrary singular
-            n = rng.gen_range(0, size - 1);
-            A = Matrix::rand_sing2(size, n, max);
-        } else if case == 2 {
-            //rows > columns
-            let offset = rng.gen_range(1, size);
-            A = Matrix::rand(size + offset, size, max);
-        } else if case == 3 {
-            //rows < columns
-            let offset = rng.gen_range(1, size);
-            A = Matrix::rand(size, size + offset, max);
-        }
-
-        println!("qr_test({}): case {} -> A({},{}), A rank {}, n {}, size {} \n", i, case, A.rows, A.columns, A.rank(), n, size);
-
-        println!("\n A({},{}) {} \n", A.rows, A.columns, A);
-
-        let mut qr = A.qr();
-
-        for i in 0..qr.q.len() {
-            println!("\n q({}) is {} \n", i, qr.q[i]);
-        }
-        
-        qr.Q = Some(form_Q(&qr.q, A.rows, false));
-        qr.Qt = Some(form_Q(&qr.q, A.rows, true));
-            
-        let Q = qr.Q.unwrap();
-        let Qt = qr.Qt.unwrap();
-        let mut R = qr.R.clone();
-
-        let b: Vector<f64> = Vector::rand(R.rows as u32, max);
-
-        R.apply(&f);
-        
-        println!("\n Q({},{}) {} \n", Q.rows, Q.columns, Q);
-        println!("\n R({},{}) {} \n", R.rows, R.columns, R);
-
-        println!("\n R is {} \n", R);
-
-        assert_eq!(A.rows, R.rows, "A.rows = R.rows");
-        assert_eq!(A.columns, R.columns, "A.columns = R.columns");
-        
-        let QR: Matrix<f64> = &Q * &qr.R;
-        let Qb = &Q * &b;
-        let Qtb = &Qt * &b;
-        let qb = apply_q_b(&qr.q, &b, false);
-        let qtb = apply_q_b(&qr.q, &b, true);
-        
-        assert!(eq_bound_eps_v(&qb, &Qb), "qb, Qb");
-        assert!(eq_bound_eps_v(&qtb, &Qtb), "qtb, Qtb");
-
-        let l = qr.q.len();
-
-        let ps: Vec<Matrix<f64>> = qr.q.clone().iter_mut().map(|v| { form_P(v, R.rows, true) }).collect();
-
-        for i in 0..ps.len() {
-            let P = &ps[i];
-            println!("\n P({}) is {} \n", i, P);
-            assert!(P.is_symmetric(), "P should be symmetric");
-        }
-
-        let mut QtQ: Matrix<f64> = &Q * &Qt;
-        
-        QtQ.apply(&f);
-
-        let id0 = Matrix::id(QtQ.rows);
-
-        println!("\n QtQ {} \n", QtQ);
-        println!("\n QR {} \n", QR);
-        assert_eq!(QtQ, id0, "QtQ == id");
-
-        let mut QR2: Matrix<f64> = apply_q_R(&qr.R, &qr.q, false);
-        println!("\n QR2 {} \n", QR2);
-        assert!(eq_bound_eps(&QR, &QR2), "QR = QR2");
-
-        assert!(eq_bound_eps(&A, &QR), "A = QR");
-
-        if R.is_square() { 
-            assert!(R.is_upper_triangular(), "R is upper triangular");
-        }
-    }
+    
 
 
 
@@ -4146,7 +2978,7 @@ mod tests {
 
     #[test] 
     fn permutation_test() {
-        let p = Matrix::<f32>::generate_permutations(4);
+        let p = Matrix::<f32>::perm(4);
 
         for i in 0..p.len() {
             //println!("P next is {} \n", p[i]);
@@ -4454,22 +3286,6 @@ mod tests {
     
 
 
-    #[test]
-    pub fn decomposition() {
-
-        let t: Matrix<i32> = matrix![i32,
-            3,3,1,2;
-            3,3,1,2;
-            4,4,5,2;
-            4,4,5,2;
-        ];
-    
-        let (A11, A12, A21, A22) = decompose_blocks(&t);
-        let s = format!("\n result \n {:?}, \n {:?}, \n {:?}, \n {:?}, \n", A11, A12, A21, A22);
-        println!("{}", s);
-    }
-
-
 
     #[test]
     fn augment_sq2n() {
@@ -4491,45 +3307,5 @@ mod tests {
             assert_eq!(l.fract(), 0., "from ({} {}) to ({} {}) - should be power of 2", m.rows, m.columns, aug.rows, aug.columns);
         }
     }
-
-
-
-    #[test]
-    fn strassen_test() {
-        
-        let max_side = 10;
-        let max = 10.;
-        let a: Matrix<f64> = Matrix::rand_shape(max_side, max);
-        let b: Matrix<f64> = Matrix::rand_shape(max_side, max);
-
-        let s1 = Matrix::augment_sq2n_size(&a);
-
-        let s2 = Matrix::augment_sq2n_size(&b);
-
-        let s = std::cmp::max(s1,s2);
-
-        let mut A: Matrix<f64> = Matrix::new(s,s); 
-
-        A = &A + &a;
-
-        let mut B: Matrix<f64> = Matrix::new(s,s); 
-
-        B = &B + &b;
-
-        let expected: Matrix<f64> = &A * &B;
-
-        let s = format!("\n [{}] expected \n {:?} \n", expected.sum(), expected);
-
-        println!("{}", s);
-        
-        let C = strassen(&A, &B);
-        
-        let s = format!("\n [{}] result \n {:?} \n", C.sum(), C);
-        
-        println!("{}", s);
-
-        let equal = eq_bound_eps(&expected, &C);
-
-        assert!(equal, "should be equal");
-    }
+    
 }
