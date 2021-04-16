@@ -24,6 +24,7 @@ use wasm_bindgen::prelude::*;
 use super::matrix::Matrix;
 
 
+
 #[macro_export]
 macro_rules! matrix4 {
     (
@@ -164,13 +165,13 @@ impl Matrix4 {
 
 
     
-    pub fn t(&mut self) {
-        *self = Matrix4::new([
+    pub fn transpose(&self) -> Matrix4 {
+        Matrix4::new([
             self[0], self[4], self[8],  self[12],
             self[1], self[5], self[9],  self[13],
             self[2], self[6], self[10], self[14],
             self[3], self[7], self[11], self[15]
-        ]);
+        ])
     }
 
 
@@ -300,7 +301,7 @@ impl Matrix4 {
             -x4.det(), y4.det(), -z4.det(), t4.det()
         ];
 
-        m.t();
+        m = m.transpose();
 
         m = m * (1./s);
 
@@ -839,6 +840,32 @@ impl Neg for Matrix4 {
         self[14] *= -1.;
         self[15] *= -1.;
         self
+    }
+}
+
+
+
+impl From<Matrix<f64>> for Matrix4 {
+    fn from(m: Matrix<f64>) -> Matrix4 {
+        matrix4![
+            m[[0,0]], m[[0,1]], m[[0,2]], m[[0,3]],
+            m[[1,0]], m[[1,1]], m[[1,2]], m[[1,3]],
+            m[[2,0]], m[[2,1]], m[[2,2]], m[[2,3]],
+            m[[3,0]], m[[3,1]], m[[3,2]], m[[3,3]]
+        ]
+    }
+}
+
+
+
+impl From<&Matrix<f64>> for Matrix4 {
+    fn from(m: &Matrix<f64>) -> Matrix4 {
+        matrix4![
+            m[[0,0]], m[[0,1]], m[[0,2]], m[[0,3]],
+            m[[1,0]], m[[1,1]], m[[1,2]], m[[1,3]],
+            m[[2,0]], m[[2,1]], m[[2,2]], m[[2,3]],
+            m[[3,0]], m[[3,1]], m[[3,2]], m[[3,3]]
+        ]
     }
 }
 

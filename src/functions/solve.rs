@@ -90,6 +90,7 @@ pub fn solve_upper_triangular<T:Number>(U:&Matrix<T>, b:&Vector<T>) -> Option<Ve
 
 
 
+//solve simultaneously for n right hand sides
 pub fn solve<T:Number>(b: &Vector<T>, lu: &lu<T>, tol: f64) -> Option<Vector<T>> {
     let zero = T::from_f64(0.).unwrap();
     let one = T::from_f64(1.).unwrap();

@@ -113,12 +113,12 @@ impl Matrix3 {
 
 
     
-    pub fn t(&mut self) {
-        *self = Matrix3::new([
+    pub fn transpose(&self) -> Matrix3 {
+        Matrix3::new([
             self[0], self[3], self[6],
             self[1], self[4], self[7],
             self[2], self[5], self[8]
-        ]);
+        ])
     }
 
 
@@ -169,7 +169,7 @@ impl Matrix3 {
             xz, -yz, zz
         ];
         
-        m.t();
+        m = m.transpose();
 
         m = m * (1./s);
         
@@ -302,7 +302,7 @@ impl Matrix3 {
 
         let mut At = A.clone();
 
-        At.t();
+        At = At.transpose();
         
         let Atb: Vector3 = &At * b;
 
@@ -338,9 +338,9 @@ impl Matrix3 {
 
 fn add(a:&Matrix3, b:&Matrix3) -> Matrix3 {
     Matrix3::new([
-        a[0] + b[0], a[3] + b[3], a[6] + b[6],
-        a[1] + b[1], a[4] + b[4], a[7] + b[7],
-        a[2] + b[2], a[5] + b[5], a[8] + b[8]
+        a[0] + b[0], a[1] + b[1], a[2] + b[2],
+        a[3] + b[3], a[4] + b[4], a[5] + b[5],
+        a[6] + b[6], a[7] + b[7], a[8] + b[8]
     ])
 }
 
@@ -348,9 +348,9 @@ fn add(a:&Matrix3, b:&Matrix3) -> Matrix3 {
 
 fn sub(a:&Matrix3, b:&Matrix3) -> Matrix3 {
     Matrix3::new([
-        a[0] - b[0], a[3] - b[3], a[6] - b[6],
-        a[1] - b[1], a[4] - b[4], a[7] - b[7],
-        a[2] - b[2], a[5] - b[5], a[8] - b[8]
+        a[0] - b[0], a[1] - b[1], a[2] - b[2],
+        a[3] - b[3], a[4] - b[4], a[5] - b[5],
+        a[6] - b[6], a[7] - b[7], a[8] - b[8]
     ])
 }
 
@@ -771,7 +771,7 @@ mod tests {
 
         let y = m.clone();
 
-        m.t();
+        m = m.transpose();
 
         let id0 = Matrix3::id();
         let mut id: Matrix3 = y * m;

@@ -1,5 +1,6 @@
-use crate::{Number, core::{matrix::Matrix, matrix4::Matrix4, vector::Vector}, matrix};
+use crate::{Number, core::{matrix::Matrix, matrix2::Matrix2, matrix4::Matrix4, vector::Vector}, matrix, matrix2};
 use super::{qr::{ apply_Qt_givens_hess, givens_qr_upper_hessenberg }, utils::{eq_bound, eq_bound_eps_v}};
+
 
 
 //TODO collect eigenvectors
@@ -57,12 +58,13 @@ pub fn eig<T: Number>(A: &Matrix<T>, precision: f64, steps: i32) -> Vec<f64> {
             } else {
 
                 if w {
-                    let l = matrix![f64, 
-                        a, b;
-                        c, d;
+
+                    let l = matrix2![
+                        a, b,
+                        c, d
                     ];
 
-                    let r = Matrix::<f64>::eig2x2(&l);
+                    let r = l.eig();
 
                     if r.is_none() {
 

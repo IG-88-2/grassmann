@@ -31,9 +31,13 @@ use rand::Rng;
 use num_traits::{Float, Num, NumAssignOps, NumOps, PrimInt, Signed, cast, identities};
 use web_sys::Event;
 use crate::{Number, Partition, vector, workers::Workers};
-use crate::{functions::{ 
+use crate::{functions::{
     rand::{ rand },
     rank::{ rank },
+    exchange_rows::{ exchange_rows },
+    exchange_columns::{ exchange_columns },
+    extract_diag::{ extract_diag },
+    extract_column::{ extract_column },
     rand_shape::{ rand_shape },
     rand_diag::{ rand_diag },
     rand_sing2::{ rand_sing2 },
@@ -87,10 +91,10 @@ use crate::{functions::{
         form_Q_givens_hess, apply_q_R, form_Q, form_P, house_qr, apply_q_b
     }, 
     solve::{ solve_upper_triangular, solve, solve_lower_triangular }, 
-    utils::{eq_bound_eps, eq_bound, eq_bound_eps_v, eq_eps_f64}
+    utils::{eq_bound_eps, eq_bound, eq_bound_eps_v, eq_eps_f64 , round as r}
 }};
 
-use super::{matrix3::Matrix3, matrix4::Matrix4, vector::Vector};
+use super::{matrix2::Matrix2, matrix3::Matrix3, matrix4::Matrix4, vector::Vector};
 
 
 
@@ -232,7 +236,6 @@ impl <T: Number> Matrix<T> {
     
 
 
-    //TODO lu should keep track and return info about sign of det (n of perm)
     pub fn det(&self) -> f64 {
 
         let lu = self.lu();
@@ -246,82 +249,39 @@ impl <T: Number> Matrix<T> {
             acc = acc * T::to_f64(&c).unwrap();
         } 
 
-        acc
-    }
-
-
-
-    pub fn eig2x2(m:&Matrix<f64>) -> Option<(f64, f64)> {
-
-        let t = m.trace();
-        
-        let a = m[[0, 0]]; 
-        let d = m[[1, 1]];
-        let b = m[[0, 1]];
-        let c = m[[1, 0]];
-
-        let d = a * d - b * c;
-
-        let r = t.powf(2.) - 4. * d;
-
-        if r < 0. {
-            return None;
-        }
-
-        let y1 = (t + r.sqrt()) / 2.;
-        let y2 = (t - r.sqrt()) / 2.;
-
-        Some((y1, y2))
+        acc * (lu.sign as f64)
     }
 
 
 
     pub fn exchange_rows(&mut self, i: usize, j: usize) {
-        for k in 0..self.columns {
-            let t = self[[i, k]];
-            self[[i, k]] = self[[j, k]];
-            self[[j, k]] = t;
-        }
+        
+        exchange_rows(self, i, j)
+
     }
 
 
 
     pub fn exchange_columns(&mut self, i: usize, j: usize) {
-        for k in 0..self.rows {
-            let t = self[[k, i]];
-            self[[k, i]] = self[[k, j]];
-            self[[k, j]] = t;
-        }
+        
+        exchange_columns(self, i, j)
+
     }
     
 
 
     pub fn extract_column(&self, i: usize) -> Vector<T> {
 
-        let zero = T::from_f64(0.).unwrap();
+        extract_column(self, i)
 
-        let mut c = vec![zero; self.rows]; 
-
-        for j in 0..self.rows {
-            c[j] = self[[j, i]];
-        }
-
-        Vector::new(c)
     }
     
 
 
     pub fn extract_diag(&self) -> Vector<T> {
 
-        let zero = T::from_f64(0.).unwrap();
+        extract_diag(self)
 
-        let mut v = vec![zero; self.rows];
-
-        for i in 0..self.rows {
-            v[i] = self[[i, i]];
-        } 
-
-        Vector::new(v)
     }
 
 
@@ -1222,16 +1182,46 @@ impl <T:Number> Neg for Matrix<T> {
 
 
 mod tests {
-    use num::Integer;
     use rand::Rng;
     use std::{ f32::EPSILON as EP, f64::EPSILON, f64::consts::PI };
     use crate::{ matrix::{ Matrix }, vector::{ Vector }, matrix, vector };
-    
+    use super::{ r, Matrix2, Matrix3, Matrix4 };
+
 
 
     #[test]
     fn det() {
-        //TODO
+       
+        let test = 100;
+
+        let max = 5.;
+
+        for i in 0..test {
+            let A2: Matrix<f64> = Matrix::rand(2, 2, max);
+            let A3: Matrix<f64> = Matrix::rand(3, 3, max);
+            let A4: Matrix<f64> = Matrix::rand(4, 4, max);
+
+            let eps = 5.;
+
+            let A22 : Matrix2 = A2.clone().into();
+            let A33 : Matrix3 = A3.clone().into();
+            let A44 : Matrix4 = A4.clone().into();
+
+            let a2det = r(A2.det(), eps);
+            let a3det = r(A3.det(), eps);
+            let a4det = r(A4.det(), eps);
+
+            let a22det = r(A22.det(), eps);
+            let a33det = r(A33.det(), eps);
+            let a44det = r(A44.det(), eps);
+            
+            println!("\n a2det {}, a3det {}, a4det {} \n", a2det, a3det, a4det);
+            println!("\n a22det {}, a33det {}, a44det {} \n", a22det, a33det, a44det);
+
+            assert_eq!(a2det, a22det, "a2det == a22det");
+            assert_eq!(a3det, a33det, "a3det == a33det");
+            assert_eq!(a4det, a44det, "a4det == a44det");
+        }
     }
     
 

@@ -42,7 +42,8 @@ pub struct lu <T: Number> {
     pub L: Matrix<T>,
     pub U: Matrix<T>,
     pub P: Matrix<T>,
-    pub d: Vec<u32>
+    pub d: Vec<u32>,
+    pub sign: i32
 }
 
 //TODO 
@@ -247,7 +248,8 @@ pub fn block_lu_threads_v2<T: Number>(A: &Matrix<T>, r: usize) -> Option<lu<T>> 
         L,
         U,
         P,
-        d: Vec::new()
+        d: Vec::new(),
+        sign: 1
     };
 
     Some(result)
@@ -355,7 +357,8 @@ pub fn block_lu_threads<T: Number>(A: &Matrix<T>, r: usize) -> Option<lu<T>>   {
         L,
         U,
         P,
-        d: Vec::new()
+        d: Vec::new(),
+        sign: 1
     };
 
     return Some(result);
@@ -434,12 +437,14 @@ pub fn block_lu<T: Number>(A: &Matrix<T>) -> Option<lu<T>> {
             L,
             U,
             P,
-            d: Vec::new()
+            d: Vec::new(),
+            sign: 1
         };
 
         Some(result)
     }
 }
+
 
 
 //TODO separate for rectangular and square
@@ -457,6 +462,7 @@ pub fn lu_v2<T: Number>(A: &Matrix<T>, eq:bool, pp: bool) -> Option<lu<T>> {
     let mut col = 0;
     let mut E: Option<Matrix<T>> = None;
     let mut Q: Option<Matrix<T>> = None;
+    let mut sign = 1;
 
     if eq {
         let r = equilibrate(&mut U);
@@ -498,11 +504,13 @@ pub fn lu_v2<T: Number>(A: &Matrix<T>, eq:bool, pp: bool) -> Option<lu<T>> {
                 return None;
 
             }
+            
         } else {
 
             if k != row {
                 P.exchange_rows(row, k);
                 U.exchange_rows(row, k);
+                sign *= -1;
             }
         }
         
@@ -537,7 +545,8 @@ pub fn lu_v2<T: Number>(A: &Matrix<T>, eq:bool, pp: bool) -> Option<lu<T>> {
             P: P.into_p(),
             L,
             U,
-            d
+            d,
+            sign
         }
     )
 }
