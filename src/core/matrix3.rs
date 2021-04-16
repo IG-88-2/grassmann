@@ -12,8 +12,8 @@ use std::{f64::consts::PI, fmt, fmt::{
         Div,
         Neg
     }};
-use crate::{Float, vec3, vector, matrix, vector3::Vector3};
-use super::{matrix::Matrix, matrix4::Matrix4, utils::{clamp, eq_eps_f64}, vector::Vector, vector4::Vector4};
+use crate::{Float, functions::utils::eq_eps_f64, matrix, vec3, vector, vector3::Vector3};
+use super::{matrix::Matrix, matrix4::Matrix4, vector::Vector, vector4::Vector4};
 
 
 

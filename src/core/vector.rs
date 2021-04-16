@@ -3,8 +3,8 @@ use std::{fmt, fmt::{
         Formatter
     }, ops::{Add, AddAssign, Div, DivAssign, Index, IndexMut, Mul, MulAssign, Neg, Sub, SubAssign}};
 use num_traits::{identities,pow};
-use crate::{Float, Number};
-use super::{vector3::Vector3, vector4::Vector4, utils::eq_eps_f64};
+use crate::{Float, Number, functions::utils::eq_eps_f64};
+use super::{vector3::Vector3, vector4::Vector4};
 use rand::prelude::*;
 use rand::Rng;
 

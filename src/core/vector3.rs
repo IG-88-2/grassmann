@@ -2,8 +2,8 @@ use std::{f32::EPSILON, f64::consts::PI, fmt, fmt::{
         Display, 
         Formatter
     }, ops::{Add, AddAssign, Div, DivAssign, Index, IndexMut, Mul, MulAssign, Neg, Sub, SubAssign}};
-use crate::Float;
-use super::{vector::Vector, vector4::Vector4, matrix3::Matrix3, matrix4::Matrix4, utils::{clamp, eq_eps_f64}};
+use crate::{Float, functions::utils::{clamp, eq_eps_f64}};
+use super::{vector::Vector, vector4::Vector4, matrix3::Matrix3, matrix4::Matrix4};
 use rand::prelude::*;
 use rand::Rng;
 

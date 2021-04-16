@@ -2,14 +2,11 @@ use std::{fmt, fmt::{
         Display, 
         Formatter
     }, ops::{Add, AddAssign, Div, DivAssign, Index, IndexMut, Mul, MulAssign, Neg, Sub, SubAssign}};
-use crate::{
-    Float
-};
+use crate::{Float, functions::utils::eq_eps_f64};
 use super::{
     vector::Vector, 
     vector3::Vector3
 };
-use super::{utils::{clamp, eq_eps_f64}};
 use rand::prelude::*;
 use rand::Rng;
 

@@ -1,5 +1,6 @@
 #![allow(warnings, dead_code, unused_imports, unused)]
 mod core;
+mod functions;
 mod workers;
 use crate::core::*;
 use num_traits::{Num, NumAssignOps, NumOps, PrimInt, Signed, cast::{FromPrimitive, ToPrimitive}, identities};
@@ -62,4 +63,13 @@ impl Number for f64 {
     fn to_ne_bytes(self) -> [u8; 8] {
         self.to_ne_bytes()
     }
+}
+
+
+
+pub struct Partition <T: Number> {
+    pub A11: matrix::Matrix<T>,
+    pub A12: matrix::Matrix<T>,
+    pub A21: matrix::Matrix<T>,
+    pub A22: matrix::Matrix<T>
 }
