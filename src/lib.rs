@@ -1,7 +1,8 @@
 #![allow(warnings, dead_code, unused_imports, unused)]
-mod core;
-mod functions;
-mod workers;
+pub mod core;
+pub mod functions;
+pub mod workers;
+
 use crate::core::*;
 use num_traits::{Num, NumAssignOps, NumOps, PrimInt, Signed, cast::{FromPrimitive, ToPrimitive}, identities};
 use std::fmt::{Debug}; 

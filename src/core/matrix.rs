@@ -858,7 +858,7 @@ fn eq<T: Number>(a: &Matrix<T>, b: &Matrix<T>) -> bool {
 }
 
 
-
+//dynamic dispatch ?
 fn mul <T:Number>(
     A: &impl Index<[usize;2], Output = T>, 
     B: &impl Index<[usize;2], Output = T>,
