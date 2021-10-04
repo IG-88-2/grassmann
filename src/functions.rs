@@ -35,6 +35,8 @@ pub mod into_sab;
 pub mod transfer_into_sab;
 pub mod from_sab_f64;
 pub mod copy_to_f64;
+pub mod copy_to_f32;
+pub mod copy_to_i32;
 pub mod id;
 pub mod transpose;
 pub mod init_const;

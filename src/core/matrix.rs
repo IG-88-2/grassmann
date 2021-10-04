@@ -25,12 +25,12 @@ extern crate wasm_bindgen;
 extern crate num_cpus;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
-use js_sys::{Float32Array, Float64Array, SharedArrayBuffer, Uint32Array, Uint8Array};
+use js_sys::{Float32Array, Float64Array, Int32Array, SharedArrayBuffer, Uint32Array, Uint8Array};
 use rand::prelude::*;
 use rand::Rng;
 use num_traits::{Float, Num, NumAssignOps, NumOps, PrimInt, Signed, cast, identities};
 use web_sys::Event;
-use crate::{Number, Partition, vector, workers::Workers};
+use crate::{Number, Partition, functions::copy_to_i32::copy_to_i32, vector, workers::Workers};
 use crate::{functions::{
     rand::{ rand },
     rank::{ rank },
@@ -59,6 +59,7 @@ use crate::{functions::{
     transpose::{ transpose }, 
     id::{ id }, 
     copy_to_f64::{ copy_to_f64 }, 
+    copy_to_f32::{ copy_to_f32 }, 
     from_sab_f64::{ from_sab_f64 }, 
     transfer_into_sab::{ transfer_into_sab }, 
     into_sab::{ into_sab }, 
@@ -233,7 +234,25 @@ impl <T: Number> Matrix<T> {
             data
         }
     }
+
     
+
+    pub fn cast<K:Number>(&self) -> Matrix<K> {
+        
+        let mut m: Matrix<K> = Matrix::new(self.rows, self.columns);
+
+        let v = self.data.iter().map(|x| {
+
+            K::from_f64( x.to_f64().unwrap() ).unwrap()
+
+        }).collect();
+
+        m.set_vec(v);
+
+        m
+
+    }
+
 
 
     pub fn det(&self) -> f64 {
@@ -382,7 +401,7 @@ impl <T: Number> Matrix<T> {
 
 
 
-    pub fn transfer_into_sab(A:&Matrix<f64>, B:&Matrix<f64>) -> SharedArrayBuffer {
+    pub fn transfer_into_sab(A:&Matrix<T>, B:&Matrix<T>) -> SharedArrayBuffer {
         
         transfer_into_sab(A, B)
 
@@ -401,6 +420,22 @@ impl <T: Number> Matrix<T> {
     pub fn copy_to_f64(m: &Matrix<f64>, dst: &mut Float64Array) {
 
         copy_to_f64(m, dst)
+
+    }
+
+
+
+    pub fn copy_to_f32(m: &Matrix<f32>, dst: &mut Float32Array) {
+
+        copy_to_f32(m, dst)
+
+    }
+
+
+
+    pub fn copy_to_i32(m: &Matrix<i32>, dst: &mut Int32Array) {
+
+        copy_to_i32(m, dst)
 
     }
 

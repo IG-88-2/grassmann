@@ -3,9 +3,7 @@ let rs = import('./out/grassmann');
 self.onmessage = function(args:any) {
     
     rs.then((m) => {
-
-        //console.log("data in worker", args.data);
-
+        
         let sab = args.data[0];
 
         let a_rows = args.data[1];
@@ -24,6 +22,7 @@ self.onmessage = function(args:any) {
         let t6 = args.data[11];
         let t7 = args.data[12];
         
+        //unpack data on rust side ?
         m.ml_thread(
             sab, 
             
