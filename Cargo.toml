@@ -3,6 +3,8 @@ name = "grassmann"
 version = "0.1.0"
 authors = ["IG-88-2 <anatoly.strashkevich@gmail.com>"]
 edition = "2018"
+license = "mit"
+description = "linalg"
 
 [lib]
 crate-type = ["cdylib", "lib"]
