@@ -87,6 +87,7 @@ impl <T:Number> Vector <T> {
         if l != 0. {
             *self /= T::from_f64(l).unwrap();
         }
+        
     }
     
 
